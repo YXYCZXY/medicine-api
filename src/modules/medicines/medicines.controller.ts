@@ -9,12 +9,18 @@ import {
   ParseUUIDPipe,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 
 import { MedicinesService } from './medicines.service.js';
 
 import { CreateMedicineDto } from './dto/create-medicine.dto.js';
 import { UpdateMedicineDto } from './dto/update-medicine.dto.js';
+
+const medicineIdPipe = new ParseUUIDPipe({
+  version: '4',
+  exceptionFactory: () => new BadRequestException('药品 ID 格式不正确'),
+});
 
 @Controller('medicines')
 export class MedicinesController {
@@ -55,7 +61,7 @@ export class MedicinesController {
    */
   @Patch(':id')
   update(
-    @Param('id', new ParseUUIDPipe({ version: '4' }))
+    @Param('id', medicineIdPipe)
     id: string,
     @Body() dto: UpdateMedicineDto,
   ) {
@@ -69,7 +75,7 @@ export class MedicinesController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(
-    @Param('id', new ParseUUIDPipe({ version: '4' }))
+    @Param('id', medicineIdPipe)
     id: string,
   ): Promise<void> {
     await this.medicinesService.remove(id);

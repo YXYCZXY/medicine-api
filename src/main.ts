@@ -1,6 +1,5 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { ValidationPipe } from '@nestjs/common';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -13,19 +12,23 @@ async function bootstrap() {
     new FastifyAdapter(),
   );
 
-  // 全局请求参数校验
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-
   const configService = app.get(ConfigService);
-  const port = configService.get<number>('PORT', 3000);
 
-  await app.listen(port);
+  const corsOrigins = configService
+    .get<string>('CORS_ORIGINS', '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  app.enableCors({
+    origin: corsOrigins,
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  });
+
+  const port = Number(configService.get<string>('PORT', '3000'));
+
+  // Fastify 默认只监听 127.0.0.1，实体设备和模拟器需要通过局域网 IP 访问
+  await app.listen(port, '0.0.0.0');
 }
 
 await bootstrap();

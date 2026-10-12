@@ -12,52 +12,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 
 -- ---------------------------------------------------------
--- 2. 药品数量单位
--- ---------------------------------------------------------
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_type
-        WHERE typname = 'medicine_unit'
-    ) THEN
-        CREATE TYPE medicine_unit AS ENUM (
-            'GRAIN',   -- 粒
-            'BAG',     -- 袋
-            'BOTTLE'   -- 瓶
-        );
-    END IF;
-END
-$$;
-
-
--- ---------------------------------------------------------
--- 2.1 服药时机
--- ---------------------------------------------------------
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_type
-        WHERE typname = 'medication_timing'
-    ) THEN
-        CREATE TYPE medication_timing AS ENUM (
-            'BEFORE_MEAL',   -- 饭前
-            'AFTER_MEAL',    -- 饭后
-            'WITH_MEAL',     -- 随餐
-            'ON_WAKING',     -- 早起空腹
-            'BEFORE_SLEEP',  -- 睡前
-            'ANY_TIME'       -- 不限时间
-        );
-    END IF;
-END
-$$;
-
-
--- ---------------------------------------------------------
--- 3. 药品分类表
+-- 2. 药品分类表
+-- 由开发人员预置，全局共享；用户只能选择，不能增删改
 -- ---------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS medicine_categories (
@@ -75,7 +31,8 @@ CREATE TABLE IF NOT EXISTS medicine_categories (
 
 
 -- ---------------------------------------------------------
--- 4. 药箱主表
+-- 3. 药箱主表
+-- 所有用户共用一张表，通过 user_id 区分各自的药箱
 -- ---------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS medicine_items (
@@ -84,6 +41,9 @@ CREATE TABLE IF NOT EXISTS medicine_items (
     -- 所属用户
     -- 目前用户系统还没建立，所以暂时不添加外键
     user_id UUID NOT NULL,
+
+    -- 所属分类，一个药品只属于一个分类
+    category_id UUID NOT NULL,
 
     -- 药品名称
     -- 注意：不能 UNIQUE，同一种药可能存在多盒/多批次
@@ -98,8 +58,8 @@ CREATE TABLE IF NOT EXISTS medicine_items (
     -- 当前剩余数量
     quantity INTEGER NOT NULL DEFAULT 1,
 
-    -- 单位：粒 / 袋 / 瓶
-    unit medicine_unit NOT NULL,
+    -- 单位，原样保存用户选择或输入的文本，例如：粒 / 袋 / 瓶 / 支 / 片
+    unit VARCHAR(20) NOT NULL,
 
     -- 有效期
     expiration_date DATE,
@@ -107,8 +67,8 @@ CREATE TABLE IF NOT EXISTS medicine_items (
     -- 生产厂家
     manufacturer VARCHAR(150),
 
-    -- 功效 / 作用
-    efficacy TEXT,
+    -- 功效标签，例如：{退烧,止痛}
+    efficacy TEXT[] NOT NULL DEFAULT '{}',
 
     -- 每次用量，单位同 unit，例如 0.5 表示半粒
     dose_per_time NUMERIC(6, 2),
@@ -116,8 +76,8 @@ CREATE TABLE IF NOT EXISTS medicine_items (
     -- 每天服用次数
     times_per_day SMALLINT,
 
-    -- 服药时机
-    medication_timing medication_timing,
+    -- 用药时段，可多选，例如：{before-meal,bedtime}
+    medication_timings TEXT[] NOT NULL DEFAULT '{}',
 
     -- 存放位置
     location VARCHAR(100),
@@ -130,6 +90,12 @@ CREATE TABLE IF NOT EXISTS medicine_items (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- 分类被药品引用时禁止删除
+    CONSTRAINT fk_medicine_items_category
+        FOREIGN KEY (category_id)
+        REFERENCES medicine_categories(id)
+        ON DELETE RESTRICT,
 
     -- 库存不能小于 0
     CONSTRAINT medicine_items_quantity_check
@@ -146,32 +112,7 @@ CREATE TABLE IF NOT EXISTS medicine_items (
 
 
 -- ---------------------------------------------------------
--- 5. 药品与分类关联表
--- 一个药品可以属于多个分类
--- ---------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS medicine_category_relations (
-    medicine_item_id UUID NOT NULL,
-    category_id UUID NOT NULL,
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    PRIMARY KEY (medicine_item_id, category_id),
-
-    CONSTRAINT fk_medicine_category_medicine
-        FOREIGN KEY (medicine_item_id)
-        REFERENCES medicine_items(id)
-        ON DELETE CASCADE,
-
-    CONSTRAINT fk_medicine_category_category
-        FOREIGN KEY (category_id)
-        REFERENCES medicine_categories(id)
-        ON DELETE CASCADE
-);
-
-
--- ---------------------------------------------------------
--- 6. 常用索引
+-- 4. 常用索引
 -- ---------------------------------------------------------
 
 -- 查询某个用户的药品
@@ -190,13 +131,13 @@ ON medicine_items(expiration_date);
 CREATE INDEX IF NOT EXISTS idx_medicine_items_user_name
 ON medicine_items(user_id, name);
 
--- 分类关联查询
-CREATE INDEX IF NOT EXISTS idx_medicine_category_relations_category
-ON medicine_category_relations(category_id);
+-- 用户 + 分类联合查询
+CREATE INDEX IF NOT EXISTS idx_medicine_items_user_category
+ON medicine_items(user_id, category_id);
 
 
 -- ---------------------------------------------------------
--- 7. 自动维护 updated_at
+-- 5. 自动维护 updated_at
 -- ---------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -227,7 +168,7 @@ EXECUTE FUNCTION update_updated_at_column();
 
 
 -- ---------------------------------------------------------
--- 8. 初始化常用分类
+-- 6. 初始化常用分类
 -- ---------------------------------------------------------
 
 INSERT INTO medicine_categories (name, sort_order)
