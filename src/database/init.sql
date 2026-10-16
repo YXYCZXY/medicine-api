@@ -112,7 +112,132 @@ CREATE TABLE IF NOT EXISTS medicine_items (
 
 
 -- ---------------------------------------------------------
--- 4. 常用索引
+-- 4. 就诊主表
+-- 所有用户共用一张表，通过 user_id 区分
+-- ---------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS visit_records (
+    -- 由客户端创建草稿时生成，重试沿用
+    id UUID PRIMARY KEY,
+
+    -- 所属用户
+    -- 目前用户系统还没建立，所以暂时不添加外键
+    user_id UUID NOT NULL,
+
+    -- 实际就诊日期
+    visit_date DATE NOT NULL,
+
+    -- NULL 表示初诊；非空表示复诊，值为同组根 UUID
+    -- 不是外键：删除根就诊时不影响同组复诊
+    initial_visit_id UUID,
+
+    -- 医院或诊所
+    hospital_name VARCHAR(150),
+
+    -- 科室
+    department VARCHAR(20),
+
+    -- 医生
+    doctor_name VARCHAR(20),
+
+    -- 症状标签，包含自定义标签
+    symptom_tags TEXT[] NOT NULL DEFAULT '{}',
+
+    -- 主诉描述
+    symptom_note VARCHAR(200),
+
+    -- 诊断
+    diagnosis VARCHAR(50),
+
+    -- 处方原文
+    prescription VARCHAR(500),
+
+    -- 医嘱
+    advice TEXT,
+
+    -- 照片对象存储 key，数组顺序即显示顺序
+    photo_keys TEXT[] NOT NULL DEFAULT '{}',
+
+    -- 乐观并发版本
+    version INTEGER NOT NULL DEFAULT 1,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT visit_records_version_check
+        CHECK (version >= 1),
+
+    -- 复诊不能关联自身
+    CONSTRAINT visit_records_initial_visit_id_check
+        CHECK (initial_visit_id IS NULL OR initial_visit_id <> id),
+
+    -- 每次就诊最多 9 张照片
+    CONSTRAINT visit_records_photo_keys_check
+        CHECK (cardinality(photo_keys) <= 9)
+);
+
+
+-- ---------------------------------------------------------
+-- 5. 就诊用药表
+-- 保存当次用药快照，与药箱记录相互独立
+-- ---------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS visit_medicines (
+    -- 由客户端生成，编辑沿用
+    id UUID PRIMARY KEY,
+
+    -- 所属就诊
+    visit_id UUID NOT NULL,
+
+    -- 可选关联的药箱记录
+    medicine_id UUID,
+
+    -- 药名快照
+    name VARCHAR(100) NOT NULL,
+
+    -- 剂量单位快照
+    unit VARCHAR(20) NOT NULL,
+
+    -- 每次用量
+    dose_per_time NUMERIC(6, 2),
+
+    -- 每天服用次数
+    times_per_day SMALLINT,
+
+    -- 用药时段，可多选
+    medication_timings TEXT[] NOT NULL DEFAULT '{}',
+
+    -- 服法说明
+    usage_note VARCHAR(500),
+
+    -- 显示顺序，从 0 开始
+    sort_order INTEGER NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    -- 就诊删除时级联删除用药
+    CONSTRAINT fk_visit_medicines_visit
+        FOREIGN KEY (visit_id)
+        REFERENCES visit_records(id)
+        ON DELETE CASCADE,
+
+    -- 药箱删除时置空，用药快照保留
+    CONSTRAINT fk_visit_medicines_medicine
+        FOREIGN KEY (medicine_id)
+        REFERENCES medicine_items(id)
+        ON DELETE SET NULL,
+
+    CONSTRAINT visit_medicines_dose_per_time_check
+        CHECK (dose_per_time > 0),
+
+    CONSTRAINT visit_medicines_times_per_day_check
+        CHECK (times_per_day > 0)
+);
+
+
+-- ---------------------------------------------------------
+-- 6. 常用索引
 -- ---------------------------------------------------------
 
 -- 查询某个用户的药品
@@ -135,9 +260,29 @@ ON medicine_items(user_id, name);
 CREATE INDEX IF NOT EXISTS idx_medicine_items_user_category
 ON medicine_items(user_id, category_id);
 
+-- 按分组根 UUID 查询同组复诊
+CREATE INDEX IF NOT EXISTS idx_visit_records_initial_visit
+ON visit_records(initial_visit_id, visit_date, id);
+
+-- 用户就诊列表排序
+CREATE INDEX IF NOT EXISTS idx_visit_records_user_list
+ON visit_records(user_id, visit_date DESC, created_at DESC, id DESC);
+
+-- 按就诊读取用药并排序
+CREATE INDEX IF NOT EXISTS idx_visit_medicines_visit_sort
+ON visit_medicines(visit_id, sort_order);
+
+-- 药箱删除置空及按药箱反查用药
+CREATE INDEX IF NOT EXISTS idx_visit_medicines_medicine_id
+ON visit_medicines(medicine_id);
+
+-- 同一就诊不重复关联同一药箱记录，medicine_id 为空时不受限制
+CREATE UNIQUE INDEX IF NOT EXISTS uq_visit_medicines_visit_medicine
+ON visit_medicines(visit_id, medicine_id);
+
 
 -- ---------------------------------------------------------
--- 5. 自动维护 updated_at
+-- 7. 自动维护 updated_at
 -- ---------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -167,8 +312,26 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 
+DROP TRIGGER IF EXISTS update_visit_records_updated_at
+ON visit_records;
+
+CREATE TRIGGER update_visit_records_updated_at
+BEFORE UPDATE ON visit_records
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+
+DROP TRIGGER IF EXISTS update_visit_medicines_updated_at
+ON visit_medicines;
+
+CREATE TRIGGER update_visit_medicines_updated_at
+BEFORE UPDATE ON visit_medicines
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+
 -- ---------------------------------------------------------
--- 6. 初始化常用分类
+-- 8. 初始化常用分类
 -- ---------------------------------------------------------
 
 INSERT INTO medicine_categories (name, sort_order)

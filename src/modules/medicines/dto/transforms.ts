@@ -8,6 +8,22 @@ export function trimString({ value }: TransformFnParams): unknown {
 }
 
 /**
+ * 可空文本：trim 后空字符串归一为 null
+ */
+export function trimToNull({ value }: TransformFnParams): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
+/**
  * 字符串数组逐项去除首尾空格并去重，保持首次出现的顺序
  */
 export function trimUniqueStrings({ value }: TransformFnParams): unknown {

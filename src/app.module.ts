@@ -7,6 +7,7 @@ import { createValidationException } from './common/validation/validation-except
 import { validateEnv } from './config/env.validation.js';
 import { PrismaModule } from './database/prisma/prisma.module.js';
 import { MedicinesModule } from './modules/medicines/medicines.module.js';
+import { VisitsModule } from './modules/visits/visits.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { MedicinesModule } from './modules/medicines/medicines.module.js';
     PrismaModule,
 
     MedicinesModule,
+    VisitsModule,
   ],
   providers: [
     // 全局请求参数校验

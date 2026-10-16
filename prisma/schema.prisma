@@ -40,10 +40,59 @@ model medicine_items {
   created_at          DateTime            @default(now()) @db.Timestamptz(6)
   updated_at          DateTime            @default(now()) @db.Timestamptz(6)
   medicine_categories medicine_categories @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_medicine_items_category")
+  visit_medicines     visit_medicines[]
 
   @@index([expiration_date], map: "idx_medicine_items_expiration_date")
   @@index([name], map: "idx_medicine_items_name")
   @@index([user_id], map: "idx_medicine_items_user_id")
   @@index([user_id, name], map: "idx_medicine_items_user_name")
   @@index([user_id, category_id], map: "idx_medicine_items_user_category")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model visit_records {
+  id               String            @id @db.Uuid
+  user_id          String            @db.Uuid
+  visit_date       DateTime          @db.Date
+  initial_visit_id String?           @db.Uuid
+  hospital_name    String?           @db.VarChar(150)
+  department       String?           @db.VarChar(20)
+  doctor_name      String?           @db.VarChar(20)
+  symptom_tags     String[]          @default([])
+  symptom_note     String?           @db.VarChar(200)
+  diagnosis        String?           @db.VarChar(50)
+  prescription     String?           @db.VarChar(500)
+  advice           String?
+  photo_keys       String[]          @default([])
+  version          Int               @default(1)
+  created_at       DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime          @default(now()) @db.Timestamptz(6)
+  visit_medicines  visit_medicines[]
+
+  @@index([initial_visit_id, visit_date, id], map: "idx_visit_records_initial_visit")
+  @@index([user_id, visit_date(sort: Desc), created_at(sort: Desc), id(sort: Desc)], map: "idx_visit_records_user_list")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model visit_medicines {
+  id                 String          @id @db.Uuid
+  visit_id           String          @db.Uuid
+  medicine_id        String?         @db.Uuid
+  name               String          @db.VarChar(100)
+  unit               String          @db.VarChar(20)
+  dose_per_time      Decimal?        @db.Decimal(6, 2)
+  times_per_day      Int?            @db.SmallInt
+  medication_timings String[]        @default([])
+  usage_note         String?         @db.VarChar(500)
+  sort_order         Int
+  created_at         DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime        @default(now()) @db.Timestamptz(6)
+  visit_records      visit_records   @relation(fields: [visit_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_visit_medicines_visit")
+  medicine_items     medicine_items? @relation(fields: [medicine_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_visit_medicines_medicine")
+
+  @@unique([visit_id, medicine_id], map: "uq_visit_medicines_visit_medicine")
+  @@index([visit_id, sort_order], map: "idx_visit_medicines_visit_sort")
+  @@index([medicine_id], map: "idx_visit_medicines_medicine_id")
 }
