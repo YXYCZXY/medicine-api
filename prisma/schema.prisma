@@ -20,27 +20,29 @@ model medicine_categories {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model medicine_items {
-  id                  String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id             String              @db.Uuid
-  category_id         String              @db.Uuid
-  name                String              @db.VarChar(100)
-  specification       String?             @db.VarChar(100)
-  dosage_form         String?             @db.VarChar(50)
-  quantity            Int                 @default(1)
-  unit                String              @db.VarChar(20)
-  expiration_date     DateTime?           @db.Date
-  manufacturer        String?             @db.VarChar(150)
-  efficacy            String[]            @default([])
-  dose_per_time       Decimal?            @db.Decimal(6, 2)
-  times_per_day       Int?                @db.SmallInt
-  medication_timings  String[]            @default([])
-  location            String?             @db.VarChar(100)
-  image_url           String?
-  note                String?
-  created_at          DateTime            @default(now()) @db.Timestamptz(6)
-  updated_at          DateTime            @default(now()) @db.Timestamptz(6)
-  medicine_categories medicine_categories @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_medicine_items_category")
-  visit_medicines     visit_medicines[]
+  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                   String                      @db.Uuid
+  category_id               String                      @db.Uuid
+  name                      String                      @db.VarChar(100)
+  specification             String?                     @db.VarChar(100)
+  dosage_form               String?                     @db.VarChar(50)
+  quantity                  Int                         @default(1)
+  unit                      String                      @db.VarChar(20)
+  expiration_date           DateTime?                   @db.Date
+  manufacturer              String?                     @db.VarChar(150)
+  efficacy                  String[]                    @default([])
+  dose_per_time             Decimal?                    @db.Decimal(6, 2)
+  times_per_day             Int?                        @db.SmallInt
+  medication_timings        String[]                    @default([])
+  location                  String?                     @db.VarChar(100)
+  image_url                 String?
+  note                      String?
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  medicine_categories       medicine_categories         @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_medicine_items_category")
+  visit_medicines           visit_medicines[]
+  health_reminder_medicines health_reminder_medicines[]
+  medicine_expiry_states    medicine_expiry_states[]
 
   @@index([expiration_date], map: "idx_medicine_items_expiration_date")
   @@index([name], map: "idx_medicine_items_name")
@@ -95,4 +97,89 @@ model visit_medicines {
   @@unique([visit_id, medicine_id], map: "uq_visit_medicines_visit_medicine")
   @@index([visit_id, sort_order], map: "idx_visit_medicines_visit_sort")
   @@index([medicine_id], map: "idx_visit_medicines_medicine_id")
+}
+
+/// 用户创建的提醒规则；临期提醒由药箱实时计算。
+model health_reminders {
+  id                    String                     @id @db.Uuid
+  user_id               String                     @db.Uuid
+  type                  String                     @db.VarChar(10)
+  title                 String                     @db.VarChar(200)
+  note                  String?                    @db.VarChar(2000)
+  frequency             String                     @db.VarChar(10)
+  remind_date           DateTime?                  @db.Date
+  remind_time           String?                    @db.VarChar(5)
+  starts_on             DateTime                   @db.Date
+  record_blood_pressure Boolean                    @default(false)
+  version               Int                        @default(1)
+  created_at            DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime                   @default(now()) @db.Timestamptz(6)
+  medicine              health_reminder_medicines?
+  checkins              health_reminder_checkins[]
+
+  @@index([user_id, created_at(sort: Desc), id], map: "idx_health_reminders_user_list")
+}
+
+/// 一条用药提醒对应一份独立药品快照。
+model health_reminder_medicines {
+  reminder_id        String           @id @db.Uuid
+  medicine_id        String?          @db.Uuid
+  name               String           @db.VarChar(100)
+  unit               String           @db.VarChar(20)
+  dose_per_time      Decimal?         @db.Decimal(6, 2)
+  times_per_day      Int?             @db.SmallInt
+  medication_timings String[]         @default([])
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime         @default(now()) @db.Timestamptz(6)
+  reminder           health_reminders @relation(fields: [reminder_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  cabinet_medicine   medicine_items?  @relation(fields: [medicine_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([medicine_id])
+}
+
+/// 每次打卡独立保存；取消后保留记录及血压关联。
+model health_reminder_checkins {
+  id              String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reminder_id     String                  @db.Uuid
+  occurrence_date DateTime                @db.Date
+  scheduled_time  String?                 @db.VarChar(5)
+  completed_at    DateTime?               @db.Timestamptz(6)
+  version         Int                     @default(1)
+  created_at      DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime                @default(now()) @db.Timestamptz(6)
+  reminder        health_reminders        @relation(fields: [reminder_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  blood_pressure  blood_pressure_records?
+
+  @@unique([reminder_id, occurrence_date])
+}
+
+/// 测量数据独立归属用户，提醒删除后仍保留。
+model blood_pressure_records {
+  id          String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id     String                    @db.Uuid
+  checkin_id  String?                   @unique @db.Uuid
+  systolic    Int                       @db.SmallInt
+  diastolic   Int                       @db.SmallInt
+  pulse       Int                       @db.SmallInt
+  slot        String                    @db.VarChar(10)
+  measured_at DateTime                  @db.Timestamptz(6)
+  created_at  DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime                  @default(now()) @db.Timestamptz(6)
+  checkin     health_reminder_checkins? @relation(fields: [checkin_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([user_id, measured_at(sort: Desc), id], map: "idx_blood_pressure_user_measured")
+}
+
+/// 状态只针对某个药品的某个有效期，不复制临期卡片内容。
+model medicine_expiry_states {
+  medicine_id     String         @db.Uuid
+  expiration_date DateTime       @db.Date
+  handled_at      DateTime?      @db.Timestamptz(6)
+  dismissed_at    DateTime?      @db.Timestamptz(6)
+  version         Int            @default(1)
+  created_at      DateTime       @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime       @default(now()) @db.Timestamptz(6)
+  medicine        medicine_items @relation(fields: [medicine_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([medicine_id, expiration_date])
 }

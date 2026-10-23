@@ -28,7 +28,7 @@ import {
   trimUniqueStrings,
 } from '../../medicines/dto/transforms.js';
 
-import { CreateCabinetMedicineDto } from './create-cabinet-medicine.dto.js';
+import { CreateCabinetMedicineDto } from '../../medicines/dto/create-cabinet-medicine.dto.js';
 
 @ValidatorConstraint({ name: 'cabinetRequiresNullMedicineId', async: false })
 class CabinetRequiresNullMedicineIdConstraint

@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { createCabinetMedicine } from '../medicines/create-cabinet-medicine.js';
 
 import { CreateVisitDto } from './dto/create-visit.dto.js';
 import { QueryVisitsDto } from './dto/query-visits.dto.js';
@@ -230,57 +231,6 @@ export class VisitsService {
     }
   }
 
-  private async assertCategoryExists(
-    tx: TxClient,
-    categoryId: string,
-  ): Promise<void> {
-    const category = await tx.medicine_categories.findUnique({
-      where: { id: categoryId },
-      select: { id: true },
-    });
-
-    if (!category) {
-      throw new BadRequestException('药品分类不存在');
-    }
-  }
-
-  private async createCabinetMedicine(
-    tx: TxClient,
-    userId: string,
-    medicine: VisitMedicineDto,
-  ): Promise<string> {
-    const cabinet = medicine.cabinet!;
-    await this.assertCategoryExists(tx, cabinet.categoryId);
-
-    const created = await tx.medicine_items.create({
-      data: {
-        user_id: userId,
-        category_id: cabinet.categoryId,
-        name: medicine.name,
-        quantity: cabinet.quantity,
-        unit: medicine.unit,
-        expiration_date: cabinet.expirationDate
-          ? toDateOnlyUtc(cabinet.expirationDate)
-          : null,
-        efficacy: cabinet.efficacyTags ?? [],
-        dose_per_time:
-          medicine.dosePerTime === undefined || medicine.dosePerTime === null
-            ? null
-            : medicine.dosePerTime,
-        times_per_day:
-          medicine.timesPerDay === undefined || medicine.timesPerDay === null
-            ? null
-            : medicine.timesPerDay,
-        medication_timings: medicine.medicationTimings ?? [],
-        location: cabinet.locationId ?? null,
-        note: cabinet.note ?? null,
-      },
-      select: { id: true },
-    });
-
-    return created.id;
-  }
-
   private async resolveMedicineIdForCreate(
     tx: TxClient,
     userId: string,
@@ -295,7 +245,7 @@ export class VisitsService {
     }
 
     if (medicine.cabinet) {
-      return this.createCabinetMedicine(tx, userId, medicine);
+      return createCabinetMedicine(tx, userId, medicine);
     }
 
     return null;
@@ -325,7 +275,7 @@ export class VisitsService {
     }
 
     if (medicine.cabinet) {
-      return this.createCabinetMedicine(tx, userId, medicine);
+      return createCabinetMedicine(tx, userId, medicine);
     }
 
     return null;

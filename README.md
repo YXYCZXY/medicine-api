@@ -57,6 +57,15 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+健康提醒的真实 PostgreSQL 集成测试默认跳过。需要验证迁移、事务回滚、外键及并发时，显式指定一个数据库名以 `_test` 结尾的独立测试库：
+
+```powershell
+$env:REMINDERS_TEST_DATABASE_URL = 'postgresql://user:password@localhost:5432/medicine_test'
+npm run test:e2e -- test/reminders.postgres.e2e-spec.ts
+```
+
+该测试在随机 schema 中依次执行迁移，结束后清理该 schema，不使用业务 `DATABASE_URL`。
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

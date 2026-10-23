@@ -8,6 +8,7 @@ import { validateEnv } from './config/env.validation.js';
 import { PrismaModule } from './database/prisma/prisma.module.js';
 import { MedicinesModule } from './modules/medicines/medicines.module.js';
 import { VisitsModule } from './modules/visits/visits.module.js';
+import { RemindersModule } from './modules/reminders/reminders.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { VisitsModule } from './modules/visits/visits.module.js';
 
     MedicinesModule,
     VisitsModule,
+    RemindersModule,
   ],
   providers: [
     // 全局请求参数校验
