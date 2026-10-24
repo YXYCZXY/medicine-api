@@ -5,7 +5,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import type { UserContextService } from '../src/modules/auth/user-context.service.js';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
@@ -50,14 +50,22 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
     }
     client = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
     await client.$connect();
+    await client.users.createMany({
+      data: [USER, OTHER_USER].map((id, index) => ({
+        id,
+        account: `stock-test-${index}`,
+        nickname: '库存测试',
+        password_hash: 'test-only',
+      })),
+    });
     categoryId = (await client.medicine_categories.findFirstOrThrow()).id;
     service = new RemindersService(
       client as PrismaService,
-      { getOrThrow: () => USER } as unknown as ConfigService,
+      { getUserId: () => USER } as UserContextService,
     );
     otherService = new RemindersService(
       client as PrismaService,
-      { getOrThrow: () => OTHER_USER } as unknown as ConfigService,
+      { getUserId: () => OTHER_USER } as UserContextService,
     );
   });
 
@@ -275,8 +283,8 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
     expect((await service.findOne(reminder.id)).version).toBe(2);
   });
 
-  it('临期阈值包含当天且不含第16天，忽略状态不污染新有效期', async () => {
-    const dates = [-1, 0, 14, 15].map((days) => {
+  it('临期包含当天、第7个有效天，不含第8天，忽略状态不污染新有效期', async () => {
+    const dates = [-1, 0, 6, 7].map((days) => {
       const date = toDateOnlyUtc(today);
       date.setUTCDate(date.getUTCDate() + days);
       return date;
@@ -385,5 +393,102 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
     });
     expect((await otherService.findAll()).items).toHaveLength(0);
     expect((await otherService.findBloodPressure({})).total).toBe(0);
+  });
+
+  async function stockReminder(quantity = 10) {
+    return service.create({
+      id: randomUUID(),
+      type: 'med',
+      title: '库存测试',
+      frequency: 'daily',
+      time: '08:00',
+      medicine: {
+        medicineId: null,
+        name: '测试药',
+        unit: '粒',
+        dosePerTime: 0.5,
+        timesPerDay: 3,
+        cabinet: { categoryId, quantity },
+      },
+    });
+  }
+
+  async function stock(id: string) {
+    return Number(
+      (await client.medicine_items.findUniqueOrThrow({ where: { id } }))
+        .quantity,
+    );
+  }
+
+  const completion = {
+    expectedReminderVersion: 1,
+    expectedVersion: 0,
+    completed: true,
+  };
+
+  it('并发重复打卡仅扣一次半粒，取消和再次完成准确联动', async () => {
+    const reminder = await stockReminder();
+    const medicineId = reminder.medicine!.medicineId!;
+    const results = await Promise.allSettled([
+      service.updateCheckin(reminder.id, today, completion),
+      service.updateCheckin(reminder.id, today, completion),
+    ]);
+    expect(results.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(await stock(medicineId)).toBe(9.5);
+    await service.updateCheckin(reminder.id, today, {
+      ...completion,
+      expectedVersion: 1,
+    });
+    expect(await stock(medicineId)).toBe(9.5);
+    await service.updateCheckin(reminder.id, today, {
+      ...completion,
+      expectedVersion: 1,
+      completed: false,
+    });
+    expect(await stock(medicineId)).toBe(10);
+    await service.updateCheckin(reminder.id, today, {
+      ...completion,
+      expectedVersion: 2,
+    });
+    expect(await stock(medicineId)).toBe(9.5);
+  });
+
+  it('不同提醒并发消耗同一份余量，不能扣成负数', async () => {
+    const first = await stockReminder(0.5);
+    const medicineId = first.medicine!.medicineId!;
+    const second = await service.create({
+      id: randomUUID(),
+      type: 'med',
+      title: '第二条',
+      frequency: 'daily',
+      time: '20:00',
+      medicine: { medicineId, name: '测试药', unit: '粒', dosePerTime: 0.5 },
+    });
+    const results = await Promise.allSettled(
+      [first, second].map((r) =>
+        service.updateCheckin(r.id, today, completion),
+      ),
+    );
+    expect(results.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(await stock(medicineId)).toBe(0);
+    expect(await client.health_reminder_checkins.count()).toBe(1);
+  });
+
+  it('扣库存后保存打卡失败时，库存事务回滚', async () => {
+    const reminder = await stockReminder();
+    await pool.query(
+      'ALTER TABLE health_reminder_checkins ADD CONSTRAINT test_checkin_failure CHECK (completed_at IS NULL)',
+    );
+    try {
+      await expect(
+        service.updateCheckin(reminder.id, today, completion),
+      ).rejects.toThrow();
+      expect(await stock(reminder.medicine!.medicineId!)).toBe(10);
+      expect(await client.health_reminder_checkins.count()).toBe(0);
+    } finally {
+      await pool.query(
+        'ALTER TABLE health_reminder_checkins DROP CONSTRAINT test_checkin_failure',
+      );
+    }
   });
 });

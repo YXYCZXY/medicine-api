@@ -25,7 +25,7 @@ COMMENT ON COLUMN medicine_categories.updated_at IS '更新时间';
 COMMENT ON TABLE medicine_items IS '药箱主表，记录用户药箱中的药品，所有用户共用并通过 user_id 区分';
 
 COMMENT ON COLUMN medicine_items.id IS '主键 ID';
-COMMENT ON COLUMN medicine_items.user_id IS '所属用户 ID（用户系统未建立，暂无外键）';
+COMMENT ON COLUMN medicine_items.user_id IS '所属用户 ID，关联 users.id';
 COMMENT ON COLUMN medicine_items.category_id IS '所属分类 ID，关联 medicine_categories.id，一个药品只属于一个分类';
 COMMENT ON COLUMN medicine_items.name IS '药品名称（同一种药可能存在多盒/多批次，不唯一）';
 COMMENT ON COLUMN medicine_items.specification IS '规格，例如：0.25g × 24粒';
@@ -57,7 +57,7 @@ COMMENT ON CONSTRAINT medicine_items_times_per_day_check ON medicine_items IS '�
 COMMENT ON TABLE visit_records IS '就诊主表，记录用户每次就诊信息，所有用户共用并通过 user_id 区分';
 
 COMMENT ON COLUMN visit_records.id IS '主键 ID，由客户端创建草稿时生成 UUID v4，重试沿用';
-COMMENT ON COLUMN visit_records.user_id IS '所属用户 ID（用户系统未建立，暂无外键）';
+COMMENT ON COLUMN visit_records.user_id IS '所属用户 ID，关联 users.id';
 COMMENT ON COLUMN visit_records.visit_date IS '实际就诊日期';
 COMMENT ON COLUMN visit_records.initial_visit_id IS 'NULL 表示初诊；非空表示复诊，值为同组根 UUID，不是外键，允许指向已删除的就诊';
 COMMENT ON COLUMN visit_records.hospital_name IS '医院或诊所名称';

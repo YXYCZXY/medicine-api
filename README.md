@@ -44,6 +44,16 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## 用户注册与登录
+
+运行 `yarn prisma:generate` 和 `yarn prisma:migrate` 后启动 API。用户通过 `POST /auth/register` 提交 `account`、`password`、`nickname` 自助注册并自动登录；账号为 3–64 位字母、数字、下划线或连字符，密码为 8–128 位。`POST /auth/login` 登录，`GET /users/me` 查询当前用户，`POST /auth/logout` 撤销当前会话。令牌有效期为 7 天，只将令牌摘要保存在数据库。除注册和登录外，接口均要求 `Authorization: Bearer <token>`。
+
+药箱、就诊、提醒和血压记录通过 `user_id` 归属用户，服务端从已验证的会话中取得用户 ID。不同账号的数据不会共享。当前没有手机号验证码、密码找回或家庭共享功能。
+
+### 迁移旧单账号
+
+迁移前备份数据库并核对业务表中的不同 `user_id`。迁移会为每个原有 ID 创建不可登录的占位用户，保留全部业务记录及原 UUID。若原 `.env` 中仍有 `DEV_USER_ID`、`LOGIN_ACCOUNT`、`LOGIN_PASSWORD`，运行 `yarn user:activate-legacy` 一次，将指定的旧用户激活为原账号；脚本不会覆盖已激活用户的密码。旧密码必须满足新的 8–128 位规则。完成后可从 `.env` 删除这三个旧变量及不再使用的 `AUTH_TOKEN_SECRET`。原有令牌需要重新登录。
+
 ## Run tests
 
 ```bash

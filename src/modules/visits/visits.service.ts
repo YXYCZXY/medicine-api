@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { UserContextService } from '../auth/user-context.service.js';
 
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -36,11 +36,11 @@ const MEDICINE_MISSING = '所选药箱药品已不存在';
 export class VisitsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
+    private readonly context: UserContextService,
   ) {}
 
   private getUserId(): string {
-    return this.config.getOrThrow<string>('DEV_USER_ID');
+    return this.context.getUserId();
   }
 
   private isDeadlock(error: unknown): boolean {

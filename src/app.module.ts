@@ -1,4 +1,4 @@
-import { Module, ValidationPipe } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
@@ -9,6 +9,8 @@ import { PrismaModule } from './database/prisma/prisma.module.js';
 import { MedicinesModule } from './modules/medicines/medicines.module.js';
 import { VisitsModule } from './modules/visits/visits.module.js';
 import { RemindersModule } from './modules/reminders/reminders.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
+import { UserContextMiddleware } from './modules/auth/user-context.service.js';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { RemindersModule } from './modules/reminders/reminders.module.js';
     }),
 
     PrismaModule,
+
+    AuthModule,
 
     MedicinesModule,
     VisitsModule,
@@ -44,4 +48,8 @@ import { RemindersModule } from './modules/reminders/reminders.module.js';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(UserContextMiddleware).forRoutes('*');
+  }
+}

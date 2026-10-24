@@ -42,11 +42,12 @@ export class UpdateMedicineDto {
 
   /**
    * 当前库存数量
-   * 允许 0，不允许负数、小数或 null
+   * 允许 0 和最多两位小数，不允许负数或 null
    */
   @ValidateIf((_, value) => value !== undefined)
-  @IsInt()
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(2147483647)
   quantity?: number;
 
   /**

@@ -10,7 +10,7 @@ function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
   return {
     id: '11111111-1111-4111-8111-111111111111',
     name: '布洛芬缓释胶囊',
-    quantity: 12,
+    quantity: new Prisma.Decimal(12),
     unit: '粒',
     expiration_date: new Date('2027-03-01T00:00:00.000Z'),
     efficacy: ['退烧', '止痛'],

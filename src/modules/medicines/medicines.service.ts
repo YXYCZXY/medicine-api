@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { ConfigService } from '@nestjs/config';
+import { UserContextService } from '../auth/user-context.service.js';
 
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 
@@ -30,17 +30,11 @@ function toExpirationDate(value: string | null | undefined): Date | null {
 export class MedicinesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
+    private readonly context: UserContextService,
   ) {}
 
-  /**
-   * 当前开发测试用户 ID
-   *
-   * 正式接入登录系统后，
-   * 应从认证信息中获取用户 ID。
-   */
   private getUserId(): string {
-    return this.config.getOrThrow<string>('DEV_USER_ID');
+    return this.context.getUserId();
   }
 
   /**

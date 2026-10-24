@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import type { UserContextService } from '../auth/user-context.service.js';
 
 import type { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -90,10 +90,10 @@ describe('VisitsService', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    const config = { getOrThrow: vi.fn().mockReturnValue(USER_ID) };
+    const context = { getUserId: vi.fn().mockReturnValue(USER_ID) };
     service = new VisitsService(
       prisma as unknown as PrismaService,
-      config as unknown as ConfigService,
+      context as unknown as UserContextService,
     );
   });
 

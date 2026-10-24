@@ -5,6 +5,8 @@ import {
 import { Test } from '@nestjs/testing';
 
 import { AppModule } from '../src/app.module.js';
+import { AuthGuard } from '../src/modules/auth/auth.guard.js';
+import { UserContextService } from '../src/modules/auth/user-context.service.js';
 import { PrismaService } from '../src/database/prisma/prisma.service.js';
 import { Prisma } from '../src/generated/prisma/client.js';
 
@@ -317,6 +319,10 @@ describe('Visits API (e2e)', () => {
     })
       .overrideProvider(PrismaService)
       .useValue(prisma)
+      .overrideProvider(AuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideProvider(UserContextService)
+      .useValue({ run: (next: () => void) => next(), getUserId: () => '00000000-0000-4000-8000-000000000001' })
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(

@@ -3,7 +3,7 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import type { UserContextService } from '../auth/user-context.service.js';
 import type { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { RemindersService } from './reminders.service.js';
@@ -63,6 +63,7 @@ function createMock() {
       findFirst: vi.fn().mockResolvedValue(null),
       findFirstOrThrow: vi.fn(),
       create: vi.fn().mockResolvedValue({ id: MED }),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     medicine_categories: {
       findUnique: vi.fn().mockResolvedValue({ id: 'category' }),
@@ -86,10 +87,177 @@ describe('RemindersService', () => {
     prisma = createMock();
     service = new RemindersService(
       prisma as unknown as PrismaService,
-      { getOrThrow: () => USER } as unknown as ConfigService,
+      { getUserId: () => USER } as unknown as UserContextService,
     );
   });
   afterEach(() => vi.useRealTimers());
+
+  function medication() {
+    const row = {
+      ...createRow(),
+      type: 'med',
+      record_blood_pressure: false,
+      medicine: {
+        reminder_id: ID,
+        medicine_id: MED,
+        name: '测试药',
+        unit: '粒',
+        dose_per_time: new Prisma.Decimal('0.5'),
+        times_per_day: 3,
+        medication_timings: [],
+        created_at: NOW,
+        updated_at: NOW,
+      },
+    };
+    prisma.tx.health_reminders.findFirst.mockResolvedValue(row);
+    return row;
+  }
+
+  const complete = {
+    expectedReminderVersion: 1,
+    expectedVersion: 0,
+    completed: true,
+  };
+
+  it('打卡只扣一次单次剂量，支持半粒，不乘一日次数', async () => {
+    medication();
+    await service.updateCheckin(ID, '2026-10-23', complete);
+    expect(prisma.tx.medicine_items.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: MED,
+        user_id: USER,
+        unit: '粒',
+        quantity: { gte: new Prisma.Decimal('0.5') },
+      },
+      data: { quantity: { decrement: new Prisma.Decimal('0.5') } },
+    });
+    expect(prisma.tx.health_reminder_checkins.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          stock_medicine_id: MED,
+          stock_quantity: new Prisma.Decimal('0.5'),
+          stock_unit: '粒',
+        }),
+      }),
+    );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('库存不足或单位不一致时不保存完成状态', async () => {
+    medication();
+    prisma.tx.medicine_items.updateMany.mockResolvedValue({ count: 0 });
+    await expect(
+      service.updateCheckin(ID, '2026-10-23', complete),
+    ).rejects.toThrow('药品库存不足');
+    expect(prisma.tx.health_reminder_checkins.upsert).not.toHaveBeenCalled();
+  });
+
+  it('没有关联药箱的提醒独立打卡，不猜测库存或剂量', async () => {
+    const row = medication();
+    prisma.tx.health_reminders.findFirst.mockResolvedValue({
+      ...row,
+      medicine: { ...row.medicine, medicine_id: null },
+    });
+    await service.updateCheckin(ID, '2026-10-23', complete);
+    expect(prisma.tx.medicine_items.updateMany).not.toHaveBeenCalled();
+    expect(prisma.tx.health_reminder_checkins.upsert).toHaveBeenCalled();
+  });
+
+  it('已关联药箱但没有剂量时要求先补充剂量', async () => {
+    const row = medication();
+    prisma.tx.health_reminders.findFirst.mockResolvedValue({
+      ...row,
+      medicine: { ...row.medicine, dose_per_time: null },
+    });
+    await expect(
+      service.updateCheckin(ID, '2026-10-23', complete),
+    ).rejects.toThrow('单次剂量');
+    expect(prisma.tx.medicine_items.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('相同完成状态不再次扣库存，也不重写打卡', async () => {
+    medication();
+    prisma.tx.health_reminder_checkins.findUnique.mockResolvedValue({
+      completed_at: NOW,
+      version: 2,
+    });
+    await service.updateCheckin(ID, '2026-10-23', {
+      ...complete,
+      expectedVersion: 2,
+    });
+    expect(prisma.tx.medicine_items.updateMany).not.toHaveBeenCalled();
+    expect(prisma.tx.health_reminder_checkins.upsert).not.toHaveBeenCalled();
+  });
+
+  it('改药或改剂量后取消仍恢复原药原数量', async () => {
+    medication();
+    prisma.tx.health_reminder_checkins.findUnique.mockResolvedValue({
+      completed_at: NOW,
+      version: 1,
+      stock_medicine_id: 'original-medicine',
+      stock_quantity: new Prisma.Decimal('1.25'),
+      stock_unit: '袋',
+    });
+    await service.updateCheckin(ID, '2026-10-23', {
+      ...complete,
+      expectedVersion: 1,
+      completed: false,
+    });
+    expect(prisma.tx.medicine_items.updateMany).toHaveBeenCalledWith({
+      where: { id: 'original-medicine', user_id: USER, unit: '袋' },
+      data: { quantity: { increment: new Prisma.Decimal('1.25') } },
+    });
+    expect(prisma.tx.health_reminder_checkins.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          stock_medicine_id: null,
+          stock_quantity: null,
+          stock_unit: null,
+        }),
+      }),
+    );
+  });
+
+  it('上线前的历史打卡取消不凭空增加库存', async () => {
+    medication();
+    prisma.tx.health_reminder_checkins.findUnique.mockResolvedValue({
+      completed_at: NOW,
+      version: 1,
+    });
+    await service.updateCheckin(ID, '2026-10-23', {
+      ...complete,
+      expectedVersion: 1,
+      completed: false,
+    });
+    expect(prisma.tx.medicine_items.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('原药已删除时允许取消，原药仅换单位时拒绝错误恢复', async () => {
+    medication();
+    prisma.tx.health_reminder_checkins.findUnique.mockResolvedValue({
+      completed_at: NOW,
+      version: 1,
+      stock_medicine_id: MED,
+      stock_quantity: new Prisma.Decimal(1),
+      stock_unit: '粒',
+    });
+    prisma.tx.medicine_items.updateMany.mockResolvedValue({ count: 0 });
+    await service.updateCheckin(ID, '2026-10-23', {
+      ...complete,
+      expectedVersion: 1,
+      completed: false,
+    });
+    prisma.tx.health_reminder_checkins.upsert.mockClear();
+    prisma.tx.medicine_items.findFirst.mockResolvedValue({ id: MED });
+    await expect(
+      service.updateCheckin(ID, '2026-10-23', {
+        ...complete,
+        expectedVersion: 1,
+        completed: false,
+      }),
+    ).rejects.toThrow('药品单位已变化');
+    expect(prisma.tx.health_reminder_checkins.upsert).not.toHaveBeenCalled();
+  });
 
   it('查询不存在或其他用户的提醒返回 404', async () => {
     prisma.tx.health_reminders.findFirst.mockResolvedValue(null);
@@ -354,14 +522,14 @@ describe('RemindersService', () => {
     expect((await service.findAll()).date).toBe('2026-10-24');
   });
 
-  it('临期查询只取有库存且有效期在今天加 14 天内的药品', async () => {
+  it('临期查询只取有库存且有效期在今天加 6 天内的药品', async () => {
     await service.findAll();
     expect(prisma.tx.medicine_items.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           user_id: USER,
           quantity: { gt: 0 },
-          expiration_date: { lte: new Date('2026-11-06T00:00:00Z') },
+          expiration_date: { lte: new Date('2026-10-29T00:00:00Z') },
         },
       }),
     );
@@ -374,7 +542,7 @@ describe('RemindersService', () => {
     });
     await expect(
       service.updateExpiry(MED, {
-        expirationDate: '2026-10-30',
+        expirationDate: '2026-10-29',
         expectedVersion: 0,
         status: 'handled',
       }),
@@ -388,10 +556,10 @@ describe('RemindersService', () => {
       name: '药品',
       quantity: 1,
       unit: '粒',
-      expiration_date: new Date('2026-10-30T00:00:00Z'),
+      expiration_date: new Date('2026-10-29T00:00:00Z'),
       medicine_expiry_states: [],
     });
-    expect(await service.findExpiry(MED, '2026-10-30')).toMatchObject({
+    expect(await service.findExpiry(MED, '2026-10-29')).toMatchObject({
       medicineId: MED,
       status: 'pending',
     });
@@ -402,14 +570,14 @@ describe('RemindersService', () => {
           user_id: USER,
           quantity: { gt: 0 },
           expiration_date: {
-            equals: new Date('2026-10-30T00:00:00Z'),
-            lte: new Date('2026-11-06T00:00:00Z'),
+            equals: new Date('2026-10-29T00:00:00Z'),
+            lte: new Date('2026-10-29T00:00:00Z'),
           },
         },
       }),
     );
     prisma.tx.medicine_items.findFirst.mockResolvedValue(null);
-    await expect(service.findExpiry(MED, '2026-10-30')).rejects.toBeInstanceOf(
+    await expect(service.findExpiry(MED, '2026-10-29')).rejects.toBeInstanceOf(
       NotFoundException,
     );
   });
@@ -485,7 +653,7 @@ describe('RemindersService', () => {
       name: '药品',
       quantity: 1,
       unit: '粒',
-      expiration_date: new Date('2026-10-30T00:00:00Z'),
+      expiration_date: new Date('2026-10-29T00:00:00Z'),
       medicine_expiry_states: [],
     };
     prisma.tx.medicine_items.findMany.mockResolvedValue([
@@ -534,7 +702,7 @@ describe('RemindersService', () => {
       name: '药品',
       quantity: 1,
       unit: '粒',
-      expiration_date: new Date('2026-10-30T00:00:00Z'),
+      expiration_date: new Date('2026-10-29T00:00:00Z'),
       medicine_expiry_states: [],
     } as unknown as ExpiryRecord;
     prisma.tx.medicine_items.findFirstOrThrow.mockResolvedValue(medicine);
@@ -547,7 +715,7 @@ describe('RemindersService', () => {
     });
     expect(
       await service.updateExpiry(MED, {
-        expirationDate: '2026-10-30',
+        expirationDate: '2026-10-29',
         expectedVersion: 0,
         status: 'dismissed',
       }),

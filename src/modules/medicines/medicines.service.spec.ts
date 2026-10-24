@@ -1,5 +1,5 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import type { UserContextService } from '../auth/user-context.service.js';
 
 import type { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -16,7 +16,7 @@ function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
   return {
     id: MEDICINE_ID,
     name: '布洛芬缓释胶囊',
-    quantity: 12,
+    quantity: new Prisma.Decimal(12),
     unit: '粒',
     expiration_date: null,
     efficacy: [],
@@ -54,11 +54,11 @@ describe('MedicinesService', () => {
 
   beforeEach(() => {
     prisma = createPrismaMock();
-    const config = { getOrThrow: vi.fn().mockReturnValue(USER_ID) };
+    const context = { getUserId: vi.fn().mockReturnValue(USER_ID) };
 
     service = new MedicinesService(
       prisma as unknown as PrismaService,
-      config as unknown as ConfigService,
+      context as unknown as UserContextService,
     );
   });
 

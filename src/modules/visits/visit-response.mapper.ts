@@ -166,7 +166,7 @@ export function toVisitMedicineResponse(
       ? {
           id: item.medicine_items.id,
           name: item.medicine_items.name,
-          quantity: item.medicine_items.quantity,
+          quantity: Number(item.medicine_items.quantity),
           unit: item.medicine_items.unit,
           expirationDate: item.medicine_items.expiration_date
             ? formatDateOnly(item.medicine_items.expiration_date)

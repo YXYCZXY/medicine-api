@@ -3,7 +3,8 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
-  IsInt,
+  IsNumber,
+  Max,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -22,8 +23,9 @@ export class CreateCabinetMedicineDto {
   @IsUUID('4')
   categoryId!: string;
 
-  @IsInt()
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(2147483647)
   quantity!: number;
 
   @IsOptional()

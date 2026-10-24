@@ -32,8 +32,9 @@ export class CreateMedicineDto {
   categoryId!: string;
 
   // 当前库存数量
-  @IsInt()
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(2147483647)
   quantity!: number;
 
   // 药品单位，原样保存文本，例如：粒 / 袋 / 瓶 / 支 / 片

@@ -30,7 +30,7 @@ function createMedicineRecord(
     medicine_items: {
       id: MEDICINE_ID,
       name: '布洛芬缓释胶囊',
-      quantity: 12,
+      quantity: new Prisma.Decimal(12),
       unit: '粒',
       expiration_date: new Date('2027-08-01T00:00:00.000Z'),
     },

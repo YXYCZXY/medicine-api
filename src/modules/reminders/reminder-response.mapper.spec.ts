@@ -35,6 +35,9 @@ const checkin: CheckinRecord = {
   created_at: now,
   updated_at: now,
   blood_pressure: null,
+  stock_medicine_id: null,
+  stock_quantity: null,
+  stock_unit: null,
 };
 
 describe('提醒状态映射', () => {
@@ -143,7 +146,7 @@ describe('提醒状态映射', () => {
     const medicine = {
       id: 'medicine',
       name: '药品',
-      quantity: 1,
+      quantity: new Prisma.Decimal(1),
       unit: '粒',
       expiration_date: new Date('2026-10-23T00:00:00Z'),
       medicine_expiry_states: [

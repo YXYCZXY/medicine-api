@@ -1,5 +1,3 @@
-import { isUUID } from 'class-validator';
-
 /**
  * 启动时校验必填环境变量，避免运行到第一个请求才报错
  */
@@ -11,11 +9,6 @@ export function validateEnv(
   const databaseUrl = config.DATABASE_URL;
   if (typeof databaseUrl !== 'string' || databaseUrl.trim() === '') {
     errors.push('DATABASE_URL 必填');
-  }
-
-  const devUserId = config.DEV_USER_ID;
-  if (typeof devUserId !== 'string' || !isUUID(devUserId)) {
-    errors.push('DEV_USER_ID 必须是 UUID');
   }
 
   const port = config.PORT;

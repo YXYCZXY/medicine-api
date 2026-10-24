@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { UserContextService } from '../auth/user-context.service.js';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { createCabinetMedicine } from '../medicines/create-cabinet-medicine.js';
@@ -31,7 +31,7 @@ import {
 } from './reminder-response.mapper.js';
 
 const CONFLICT = '记录已变化，请重新读取后确认';
-const EXPIRING_VALID_DAYS = 15;
+const EXPIRING_VALID_DAYS = 7;
 type Tx = Prisma.TransactionClient;
 
 /** 按业务时区处理提醒规则、打卡与临期操作，写操作由数据库事务串行化。 */
@@ -39,12 +39,12 @@ type Tx = Prisma.TransactionClient;
 export class RemindersService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
+    private readonly context: UserContextService,
   ) {}
 
-  /** 用户身份只取自服务端，开发期沿用现有开发用户配置。 */
+  /** 用户身份只取自已验证的请求会话。 */
   private getUserId(): string {
-    return this.config.getOrThrow<string>('DEV_USER_ID');
+    return this.context.getUserId();
   }
 
   /** 提醒不存在或不属于当前用户时统一隐藏资源。 */
@@ -160,7 +160,7 @@ export class RemindersService {
     return toReminderResponse(row, checkin, today);
   }
 
-  /** 仅查询有库存且进入 15 个有效天数窗口的药品，不在读取时写入状态。 */
+  /** 仅查询有库存且剩余有效天数 ≤ 7（含今天）的药品。 */
   private async loadExpiryItems(tx: Tx, userId: string, today: string) {
     const lastDay = toDateOnlyUtc(today);
     lastDay.setUTCDate(lastDay.getUTCDate() + EXPIRING_VALID_DAYS - 1);
@@ -480,15 +480,86 @@ export class RemindersService {
           new Date(dto.bloodPressure.measuredAt).getTime() > Date.now()
         )
           throw new BadRequestException('测量时间不能晚于当前时间');
+        // 相同状态的重试不重复扣减，也不改变首次完成时间。
+        if (
+          reminder.type === 'med' &&
+          (current?.completed_at != null) === dto.completed
+        )
+          return this.loadResponse(tx, userId, id, today);
+        let stockChange:
+          | {
+              stock_medicine_id: string | null;
+              stock_quantity: Prisma.Decimal | null;
+              stock_unit: string | null;
+            }
+          | undefined;
+        if (
+          dto.completed &&
+          reminder.type === 'med' &&
+          reminder.medicine?.medicine_id
+        ) {
+          const linked = reminder.medicine;
+          const dose = linked.dose_per_time;
+          if (!dose || dose.lte(0))
+            throw new BadRequestException('请先填写单次剂量，再打卡扣减库存');
+          // 条件更新在数据库中原子执行；不同提醒关联同一药品也不会超扣。
+          const result = await tx.medicine_items.updateMany({
+            where: {
+              id: linked.medicine_id!,
+              user_id: userId,
+              unit: linked.unit,
+              quantity: { gte: dose },
+            },
+            data: { quantity: { decrement: dose } },
+          });
+          if (result.count !== 1)
+            throw new BadRequestException(
+              '药品库存不足、单位已变化或药品不存在，请检查药箱后重试',
+            );
+          stockChange = {
+            stock_medicine_id: linked.medicine_id,
+            stock_quantity: dose,
+            stock_unit: linked.unit,
+          };
+        } else if (
+          !dto.completed &&
+          current?.stock_medicine_id &&
+          current.stock_quantity
+        ) {
+          const restored = await tx.medicine_items.updateMany({
+            where: {
+              id: current.stock_medicine_id,
+              user_id: userId,
+              unit: current.stock_unit!,
+            },
+            data: { quantity: { increment: current.stock_quantity } },
+          });
+          if (restored.count === 0) {
+            const existing = await tx.medicine_items.findFirst({
+              where: { id: current.stock_medicine_id, user_id: userId },
+            });
+            if (existing)
+              throw new BadRequestException(
+                '药品单位已变化，请恢复原单位后取消打卡',
+              );
+          }
+          stockChange = {
+            stock_medicine_id: null,
+            stock_quantity: null,
+            stock_unit: null,
+          };
+        }
         const checkin = await tx.health_reminder_checkins.upsert({
           where: { reminder_id_occurrence_date: key },
           create: {
             ...key,
             scheduled_time: reminder.remind_time,
             completed_at: dto.completed ? new Date() : null,
+            ...stockChange,
           },
           update: {
             completed_at: dto.completed ? new Date() : null,
+            ...stockChange,
             version: { increment: 1 },
           },
         });
@@ -558,7 +629,10 @@ export class RemindersService {
           throw new ConflictException('药品有效期已变化，请重新读取');
         const lastDay = toDateOnlyUtc(today);
         lastDay.setUTCDate(lastDay.getUTCDate() + EXPIRING_VALID_DAYS - 1);
-        if (medicine.quantity <= 0 || medicine.expiration_date > lastDay)
+        if (
+          Number(medicine.quantity) <= 0 ||
+          medicine.expiration_date > lastDay
+        )
           throw new BadRequestException('药品当前不在临期监控范围');
         const response = toExpiryResponse(medicine, today);
         if (response.version !== dto.expectedVersion)

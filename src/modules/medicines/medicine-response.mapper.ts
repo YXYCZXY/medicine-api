@@ -73,7 +73,7 @@ export function toMedicineResponse(item: MedicineRecord): MedicineResponse {
   return {
     id: item.id,
     name: item.name,
-    quantity: item.quantity,
+    quantity: Number(item.quantity),
     unit: item.unit,
     expirationDate: toDateOnly(item.expiration_date),
     efficacyTags: item.efficacy,

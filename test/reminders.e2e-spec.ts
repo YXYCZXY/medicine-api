@@ -4,6 +4,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../src/app.module.js';
+import { AuthGuard } from '../src/modules/auth/auth.guard.js';
 import { PrismaService } from '../src/database/prisma/prisma.service.js';
 import { RemindersService } from '../src/modules/reminders/reminders.service.js';
 
@@ -37,6 +38,8 @@ describe('Reminders API 参数与路由', () => {
       .useValue({})
       .overrideProvider(RemindersService)
       .useValue(service)
+      .overrideProvider(AuthGuard)
+      .useValue({ canActivate: () => true })
       .compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),

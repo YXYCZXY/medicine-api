@@ -99,7 +99,7 @@ export function toReminderResponse(
   };
 }
 
-/** 有效期当日仍有效；15 个有效天数包含今天。 */
+/** 有效期当日仍有效；7 个有效天数包含今天。 */
 export function toExpiryResponse(row: ExpiryRecord, today: string) {
   const expirationDate = formatDateOnly(row.expiration_date!);
   const state = row.medicine_expiry_states.find(
@@ -114,7 +114,7 @@ export function toExpiryResponse(row: ExpiryRecord, today: string) {
     advice: expired
       ? '药品已过有效期，请及时清理'
       : '建议检查药品有效期并及时换新',
-    quantity: row.quantity,
+    quantity: Number(row.quantity),
     unit: row.unit,
     expired,
     status: state?.dismissed_at
