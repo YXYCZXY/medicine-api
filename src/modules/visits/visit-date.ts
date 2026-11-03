@@ -1,5 +1,5 @@
-/** 业务时区：开发期固定为 Asia/Singapore */
-export const BUSINESS_TIME_ZONE = 'Asia/Singapore';
+/** 前后端统一的业务日期时区。 */
+export const BUSINESS_TIME_ZONE = 'Asia/Shanghai';
 
 /**
  * 将 YYYY-MM-DD 转为 UTC 零点 Date，写入 PostgreSQL DATE

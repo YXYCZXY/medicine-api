@@ -9,7 +9,7 @@ import { AppModule } from './app.module.js';
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    new FastifyAdapter({ bodyLimit: 12 * 1024 * 1024 }),
   );
 
   const configService = app.get(ConfigService);

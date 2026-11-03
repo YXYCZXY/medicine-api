@@ -8,6 +8,7 @@ import {
 
 function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
   return {
+    version: 1,
     id: '11111111-1111-4111-8111-111111111111',
     name: '布洛芬缓释胶囊',
     quantity: new Prisma.Decimal(12),
@@ -32,6 +33,7 @@ function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
 describe('toMedicineResponse', () => {
   it('输出 camelCase 字段，Decimal 转 number，日期截取为 YYYY-MM-DD', () => {
     expect(toMedicineResponse(createRecord())).toEqual({
+      version: 1,
       id: '11111111-1111-4111-8111-111111111111',
       name: '布洛芬缓释胶囊',
       quantity: 12,

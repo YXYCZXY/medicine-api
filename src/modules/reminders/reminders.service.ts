@@ -303,9 +303,9 @@ export class RemindersService {
   }
 
   /** 同一事务创建提醒、药品快照及可选药箱记录。 */
-  async create(dto: CreateReminderDto) {
+  async create(dto: CreateReminderDto, occurredAt?: string) {
     const userId = this.getUserId();
-    const today = todayInBusinessTz();
+    const today = todayInBusinessTz(occurredAt ? new Date(occurredAt) : new Date());
     const frequency =
       dto.frequency ?? (dto.type === 'visit' ? 'once' : undefined);
     this.validateFields(dto.type, {
@@ -346,9 +346,9 @@ export class RemindersService {
   }
 
   /** 编辑合并后校验完整组合；已完成记录和历史测量不因规则编辑而删除。 */
-  async update(id: string, dto: UpdateReminderDto) {
+  async update(id: string, dto: UpdateReminderDto, occurredAt?: string) {
     const userId = this.getUserId();
-    const today = todayInBusinessTz();
+    const today = todayInBusinessTz(occurredAt ? new Date(occurredAt) : new Date());
     const { expectedVersion, ...fields } = dto;
     if (Object.values(fields).every((value) => value === undefined))
       throw new BadRequestException('没有需要修改的内容');
@@ -441,6 +441,8 @@ export class RemindersService {
     id: string,
     occurrenceDate: string,
     dto: UpdateCheckinDto,
+    occurredAt?: string,
+    identities?: { id?: string; bloodPressureId?: string },
   ) {
     const userId = this.getUserId();
     const today = todayInBusinessTz();
@@ -451,7 +453,7 @@ export class RemindersService {
         if (reminder.version !== dto.expectedReminderVersion)
           throw new ConflictException(CONFLICT);
         if (
-          getOccurrenceDate(reminder, today) !== occurrenceDate ||
+          getOccurrenceDate(reminder, occurredAt ? occurrenceDate : today) !== occurrenceDate ||
           occurrenceDate > today
         )
           throw new BadRequestException('该日期不能打卡');
@@ -552,13 +554,14 @@ export class RemindersService {
         const checkin = await tx.health_reminder_checkins.upsert({
           where: { reminder_id_occurrence_date: key },
           create: {
+            ...(identities?.id ? { id: identities.id } : {}),
             ...key,
             scheduled_time: reminder.remind_time,
-            completed_at: dto.completed ? new Date() : null,
+            completed_at: dto.completed ? new Date(occurredAt ?? Date.now()) : null,
             ...stockChange,
           },
           update: {
-            completed_at: dto.completed ? new Date() : null,
+            completed_at: dto.completed ? new Date(occurredAt ?? Date.now()) : null,
             ...stockChange,
             version: { increment: 1 },
           },
@@ -574,7 +577,7 @@ export class RemindersService {
           };
           await tx.blood_pressure_records.upsert({
             where: { checkin_id: checkin.id },
-            create: { user_id: userId, checkin_id: checkin.id, ...data },
+            create: { ...(identities?.bloodPressureId ? { id: identities.bloodPressureId } : {}), user_id: userId, checkin_id: checkin.id, ...data },
             update: data,
           });
         }

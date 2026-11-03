@@ -14,6 +14,7 @@ const CATEGORY_ID = '22222222-2222-4222-8222-222222222222';
 
 function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
   return {
+    version: 1,
     id: MEDICINE_ID,
     name: '布洛芬缓释胶囊',
     quantity: new Prisma.Decimal(12),

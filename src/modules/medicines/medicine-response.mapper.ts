@@ -5,6 +5,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
  */
 export const MEDICINE_SELECT = {
   id: true,
+  version: true,
   name: true,
   quantity: true,
   unit: true,
@@ -41,6 +42,7 @@ export type CategoryRecord = Prisma.medicine_categoriesGetPayload<{
 
 export type MedicineResponse = {
   id: string;
+  version: number;
   name: string;
   quantity: number;
   unit: string;
@@ -72,6 +74,7 @@ function toDateOnly(date: Date | null): string | null {
 export function toMedicineResponse(item: MedicineRecord): MedicineResponse {
   return {
     id: item.id,
+    version: item.version,
     name: item.name,
     quantity: Number(item.quantity),
     unit: item.unit,

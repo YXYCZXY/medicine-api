@@ -11,6 +11,7 @@ import { VisitsModule } from './modules/visits/visits.module.js';
 import { RemindersModule } from './modules/reminders/reminders.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { UserContextMiddleware } from './modules/auth/user-context.service.js';
+import { SyncModule } from './modules/sync/sync.module.js';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { UserContextMiddleware } from './modules/auth/user-context.service.js';
     MedicinesModule,
     VisitsModule,
     RemindersModule,
+    SyncModule,
   ],
   providers: [
     // 全局请求参数校验

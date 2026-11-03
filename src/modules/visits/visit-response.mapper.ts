@@ -140,7 +140,7 @@ export type InitialVisitSummaryResponse = {
 
 export type VisitDetailResponse = VisitSummaryResponse & {
   prescription: string | null;
-  photos: [];
+  photos: { id: string; uri: string }[];
   initialVisit: InitialVisitSummaryResponse | null;
 };
 
@@ -224,7 +224,7 @@ export function toVisitDetailResponse(
   return {
     ...toVisitSummaryResponse(item),
     prescription: item.prescription,
-    photos: [],
+    photos: item.photo_keys.map(id => ({ id, uri: `attachment:${id}` })),
     initialVisit: initialVisit
       ? toInitialVisitSummaryResponse(initialVisit)
       : null,

@@ -95,11 +95,12 @@ export class MedicinesService {
    * 新增药品
    * POST /medicines
    */
-  async create(dto: CreateMedicineDto): Promise<MedicineResponse> {
+  async create(dto: CreateMedicineDto, id?: string): Promise<MedicineResponse> {
     await this.assertCategoryExists(dto.categoryId);
 
     const medicine = await this.prisma.medicine_items.create({
       data: {
+        ...(id ? { id } : {}),
         user_id: this.getUserId(),
         category_id: dto.categoryId,
         name: dto.name,

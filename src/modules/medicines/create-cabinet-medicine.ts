@@ -25,6 +25,7 @@ export async function createCabinetMedicine(
   if (!category) throw new BadRequestException('药品分类不存在');
   const created = await tx.medicine_items.create({
     data: {
+      ...(cabinet.id ? { id: cabinet.id } : {}),
       user_id: userId,
       category_id: cabinet.categoryId,
       name: medicine.name,

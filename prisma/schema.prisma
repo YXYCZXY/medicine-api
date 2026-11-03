@@ -71,6 +71,7 @@ model medicine_items {
   note                      String?
   created_at                DateTime                    @default(now()) @db.Timestamptz(6)
   updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  version                   Int                         @default(1)
   medicine_categories       medicine_categories         @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_medicine_items_category")
   visit_medicines           visit_medicines[]
   health_reminder_medicines health_reminder_medicines[]
@@ -81,6 +82,49 @@ model medicine_items {
   @@index([user_id], map: "idx_medicine_items_user_id")
   @@index([user_id, name], map: "idx_medicine_items_user_name")
   @@index([user_id, category_id], map: "idx_medicine_items_user_category")
+}
+
+/// Immutable result of a client operation. The business effect and accepted receipt commit together.
+model sync_command_receipts {
+  user_id String @db.Uuid
+  op_id String @db.Uuid
+  device_id String
+  sequence Int
+  entity_id String @db.Uuid
+  type String
+  digest String
+  status String
+  result Json
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  @@id([user_id, op_id])
+  @@unique([user_id, device_id, sequence])
+}
+
+model sync_tombstones {
+  user_id String @db.Uuid
+  kind String
+  entity_id String @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  @@id([user_id, kind, entity_id])
+}
+
+/// Rule snapshots allow delayed check-ins to be checked against the rule the user actually saw.
+model sync_reminder_revisions {
+  user_id String @db.Uuid
+  reminder_id String @db.Uuid
+  version Int
+  record Json
+  @@id([user_id, reminder_id, version])
+}
+
+/// Account-scoped immutable attachments. May be moved to object storage behind the same API later.
+model sync_attachments {
+  user_id String @db.Uuid
+  id String @db.Uuid
+  digest String
+  content Bytes
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  @@id([user_id, id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

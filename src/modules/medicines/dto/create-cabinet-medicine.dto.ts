@@ -20,6 +20,10 @@ import { trimToNull, trimUniqueStrings } from './transforms.js';
  * 就诊或提醒入箱时的药箱专属字段；药名、单位和剂量取自所在快照。
  */
 export class CreateCabinetMedicineDto {
+  @IsOptional()
+  @IsUUID('4')
+  id?: string;
+
   @IsUUID('4')
   categoryId!: string;
 

@@ -262,6 +262,7 @@ function createPrismaFake() {
     visits,
     meds,
     items,
+    ...tx,
     $queryRaw: vi.fn(async (query: TemplateStringsArray) => {
       const sql = String(query);
       if (sql.includes('COUNT')) {
@@ -288,7 +289,6 @@ function createPrismaFake() {
           .map(withMedicines),
       ),
     },
-    ...tx,
   };
 }
 
