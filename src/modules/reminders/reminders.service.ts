@@ -1,3 +1,4 @@
+import { lockDictionaryForWrite } from '../user-dictionaries/dictionary-actions.js';
 import {
   BadRequestException,
   ConflictException,
@@ -305,7 +306,9 @@ export class RemindersService {
   /** 同一事务创建提醒、药品快照及可选药箱记录。 */
   async create(dto: CreateReminderDto, occurredAt?: string) {
     const userId = this.getUserId();
-    const today = todayInBusinessTz(occurredAt ? new Date(occurredAt) : new Date());
+    const today = todayInBusinessTz(
+      occurredAt ? new Date(occurredAt) : new Date(),
+    );
     const frequency =
       dto.frequency ?? (dto.type === 'visit' ? 'once' : undefined);
     this.validateFields(dto.type, {
@@ -322,6 +325,7 @@ export class RemindersService {
       throw new BadRequestException('请选择提醒药品');
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockDictionaryForWrite(tx, userId, dto);
         await tx.health_reminders.create({
           data: {
             id: dto.id,
@@ -348,12 +352,15 @@ export class RemindersService {
   /** 编辑合并后校验完整组合；已完成记录和历史测量不因规则编辑而删除。 */
   async update(id: string, dto: UpdateReminderDto, occurredAt?: string) {
     const userId = this.getUserId();
-    const today = todayInBusinessTz(occurredAt ? new Date(occurredAt) : new Date());
+    const today = todayInBusinessTz(
+      occurredAt ? new Date(occurredAt) : new Date(),
+    );
     const { expectedVersion, ...fields } = dto;
     if (Object.values(fields).every((value) => value === undefined))
       throw new BadRequestException('没有需要修改的内容');
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockDictionaryForWrite(tx, userId, dto);
         await this.lockReminder(tx, userId, id);
         const current = await this.loadReminder(tx, userId, id);
         if (current.version !== expectedVersion)
@@ -453,7 +460,8 @@ export class RemindersService {
         if (reminder.version !== dto.expectedReminderVersion)
           throw new ConflictException(CONFLICT);
         if (
-          getOccurrenceDate(reminder, occurredAt ? occurrenceDate : today) !== occurrenceDate ||
+          getOccurrenceDate(reminder, occurredAt ? occurrenceDate : today) !==
+            occurrenceDate ||
           occurrenceDate > today
         )
           throw new BadRequestException('该日期不能打卡');
@@ -557,11 +565,15 @@ export class RemindersService {
             ...(identities?.id ? { id: identities.id } : {}),
             ...key,
             scheduled_time: reminder.remind_time,
-            completed_at: dto.completed ? new Date(occurredAt ?? Date.now()) : null,
+            completed_at: dto.completed
+              ? new Date(occurredAt ?? Date.now())
+              : null,
             ...stockChange,
           },
           update: {
-            completed_at: dto.completed ? new Date(occurredAt ?? Date.now()) : null,
+            completed_at: dto.completed
+              ? new Date(occurredAt ?? Date.now())
+              : null,
             ...stockChange,
             version: { increment: 1 },
           },
@@ -577,7 +589,14 @@ export class RemindersService {
           };
           await tx.blood_pressure_records.upsert({
             where: { checkin_id: checkin.id },
-            create: { ...(identities?.bloodPressureId ? { id: identities.bloodPressureId } : {}), user_id: userId, checkin_id: checkin.id, ...data },
+            create: {
+              ...(identities?.bloodPressureId
+                ? { id: identities.bloodPressureId }
+                : {}),
+              user_id: userId,
+              checkin_id: checkin.id,
+              ...data,
+            },
             update: data,
           });
         }

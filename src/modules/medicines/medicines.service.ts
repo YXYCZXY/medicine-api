@@ -9,6 +9,7 @@ import { UserContextService } from '../auth/user-context.service.js';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import {
   applyDictionaryActionsInTx,
+  lockDictionaryForWrite,
   type DictionaryAction,
 } from '../user-dictionaries/dictionary-actions.js';
 import { normalizeDictionaryActions } from '../user-dictionaries/dto/dictionary-action.dto.js';
@@ -31,7 +32,10 @@ function toExpirationDate(value: string | null | undefined): Date | null {
 function actionsFromDto(
   dto: CreateMedicineDto | UpdateMedicineDto,
 ): DictionaryAction[] | undefined {
-  return normalizeDictionaryActions(dto.dictionaryActions);
+  return normalizeDictionaryActions(dto.dictionaryActions, [
+    'categories',
+    'efficacies',
+  ]);
 }
 
 @Injectable()
@@ -74,6 +78,7 @@ export class MedicinesService {
     const actions = actionsFromDto(dto);
 
     const medicine = await this.prisma.$transaction(async (tx) => {
+      await lockDictionaryForWrite(tx, userId, dto);
       const created = await tx.medicine_items.create({
         data: {
           ...(id ? { id } : {}),
@@ -105,28 +110,21 @@ export class MedicinesService {
    *
    * 支持局部更新
    */
-  async update(
-    id: string,
-    dto: UpdateMedicineDto,
-  ): Promise<MedicineResponse> {
+  async update(id: string, dto: UpdateMedicineDto): Promise<MedicineResponse> {
     const userId = this.getUserId();
     const actions = actionsFromDto(dto);
 
     // 不允许空请求；DTO 类字段会被初始化为 undefined，不能只看 key 数量
     if (
-      Object.entries(dto).every(
-        ([key, value]) =>
-          key === 'dictionaryActions'
-            ? !actions?.length
-            : value === undefined,
+      Object.entries(dto).every(([key, value]) =>
+        key === 'dictionaryActions' ? !actions?.length : value === undefined,
       )
     ) {
-      throw new BadRequestException(
-        '请至少提供一个需要修改的字段',
-      );
+      throw new BadRequestException('请至少提供一个需要修改的字段');
     }
 
     const medicine = await this.prisma.$transaction(async (tx) => {
+      await lockDictionaryForWrite(tx, userId, dto);
       const existing = await tx.medicine_items.findFirst({
         where: {
           id,
@@ -147,21 +145,13 @@ export class MedicinesService {
           user_id: userId,
         },
         data: {
-          ...(dto.name !== undefined
-            ? { name: dto.name }
-            : {}),
+          ...(dto.name !== undefined ? { name: dto.name } : {}),
 
-          ...(dto.category !== undefined
-            ? { category: dto.category }
-            : {}),
+          ...(dto.category !== undefined ? { category: dto.category } : {}),
 
-          ...(dto.quantity !== undefined
-            ? { quantity: dto.quantity }
-            : {}),
+          ...(dto.quantity !== undefined ? { quantity: dto.quantity } : {}),
 
-          ...(dto.unit !== undefined
-            ? { unit: dto.unit }
-            : {}),
+          ...(dto.unit !== undefined ? { unit: dto.unit } : {}),
 
           ...(dto.expirationDate !== undefined
             ? { expiration_date: toExpirationDate(dto.expirationDate) }
@@ -183,13 +173,9 @@ export class MedicinesService {
             ? { medication_timings: dto.medicationTimings }
             : {}),
 
-          ...(dto.locationId !== undefined
-            ? { location: dto.locationId }
-            : {}),
+          ...(dto.locationId !== undefined ? { location: dto.locationId } : {}),
 
-          ...(dto.note !== undefined
-            ? { note: dto.note }
-            : {}),
+          ...(dto.note !== undefined ? { note: dto.note } : {}),
         },
         select: MEDICINE_SELECT,
       });

@@ -28,7 +28,8 @@ type DictionaryRow = {
 function createPrismaFake() {
   const rows = new Map<string, DictionaryRow>();
 
-  return {
+  const fake = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     rows,
     seed(userId = USER_ID, overrides: Partial<DictionaryRow> = {}) {
       const now = new Date();
@@ -86,6 +87,21 @@ function createPrismaFake() {
         },
       ),
     },
+  };
+  return {
+    ...fake,
+    $transaction: vi.fn(
+      async (callback: (tx: typeof fake) => Promise<unknown>) => {
+        const before = new Map([...rows].map(([id, row]) => [id, { ...row }]));
+        try {
+          return await callback(fake);
+        } catch (error) {
+          rows.clear();
+          for (const [id, row] of before) rows.set(id, row);
+          throw error;
+        }
+      },
+    ),
   };
 }
 
@@ -175,7 +191,10 @@ describe('UserDictionaries API (e2e)', () => {
   });
 
   it('非法字段与缺失字典返回错误，重命名冲突返回 409', async () => {
-    const missing = await app.inject({ method: 'GET', url: '/user-dictionaries' });
+    const missing = await app.inject({
+      method: 'GET',
+      url: '/user-dictionaries',
+    });
     expect(missing.statusCode).toBe(404);
     expect(missing.json().message).toBe('用户字典不存在');
 

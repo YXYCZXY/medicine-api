@@ -28,12 +28,12 @@ function createPrismaFake() {
       ? null
       : new Prisma.Decimal(value as number);
 
-  return {
+  const fake = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
     rows,
     medicine_items: {
       findMany: vi.fn(async ({ where }: { where: { user_id: string } }) =>
-        [...rows.values()]
-          .filter((row) => row.user_id === where.user_id),
+        [...rows.values()].filter((row) => row.user_id === where.user_id),
       ),
       findFirst: vi.fn(
         async ({ where }: { where: { id: string; user_id: string } }) => {
@@ -81,6 +81,21 @@ function createPrismaFake() {
       ),
     },
   };
+  return {
+    ...fake,
+    $transaction: vi.fn(
+      async (callback: (tx: typeof fake) => Promise<unknown>) => {
+        const before = new Map([...rows].map(([id, row]) => [id, { ...row }]));
+        try {
+          return await callback(fake);
+        } catch (error) {
+          rows.clear();
+          for (const [id, row] of before) rows.set(id, row);
+          throw error;
+        }
+      },
+    ),
+  };
 }
 
 describe('Medicines API (e2e)', () => {
@@ -112,7 +127,10 @@ describe('Medicines API (e2e)', () => {
       .overrideProvider(AuthGuard)
       .useValue({ canActivate: () => true })
       .overrideProvider(UserContextService)
-      .useValue({ run: (next: () => void) => next(), getUserId: () => '00000000-0000-4000-8000-000000000001' })
+      .useValue({
+        run: (next: () => void) => next(),
+        getUserId: () => '00000000-0000-4000-8000-000000000001',
+      })
       .compile();
 
     app = moduleRef.createNestApplication<NestFastifyApplication>(
@@ -127,7 +145,10 @@ describe('Medicines API (e2e)', () => {
   });
 
   it('分类目录接口已移除', async () => {
-    const response = await app.inject({ method: 'GET', url: '/medicines/categories' });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/medicines/categories',
+    });
     expect(response.statusCode).toBe(404);
   });
 
@@ -195,7 +216,10 @@ describe('Medicines API (e2e)', () => {
     [{ category: 'a'.repeat(51) }, '药品分类长度超出限制'],
     [{ category: null }, '药品分类不能为空'],
     [{ category: ['止痛'] }, '药品分类必须是文本'],
-    [{ categoryId: '11111111-1111-4111-8111-111111111111' }, '不支持的字段：categoryId'],
+    [
+      { categoryId: '11111111-1111-4111-8111-111111111111' },
+      '不支持的字段：categoryId',
+    ],
   ])('POST 参数非法时返回 400：%j', async (patch, message) => {
     const response = await app.inject({
       method: 'POST',

@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 import type { Prisma } from '../../generated/prisma/client.js';
 
@@ -25,6 +22,36 @@ export type DictionaryFieldState = {
   efficacies: string[];
   symptoms: string[];
 };
+
+/** Always acquire before entity row locks; shared by REST and the sync lane. */
+export async function lockUserWrites(
+  tx: Prisma.TransactionClient,
+  userId: string,
+): Promise<void> {
+  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))::text`;
+}
+
+type DictionaryMutationInput = {
+  dictionaryActions?: readonly unknown[];
+  medicines?: { cabinet?: { dictionaryActions?: readonly unknown[] } }[];
+  medicine?: { cabinet?: { dictionaryActions?: readonly unknown[] } } | null;
+};
+
+export async function lockDictionaryForWrite(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  input: DictionaryMutationInput,
+): Promise<void> {
+  if (
+    input.dictionaryActions?.length ||
+    input.medicine?.cabinet?.dictionaryActions?.length ||
+    input.medicines?.some(
+      (medicine) => medicine.cabinet?.dictionaryActions?.length,
+    )
+  ) {
+    await lockUserWrites(tx, userId);
+  }
+}
 
 /** 按顺序重放行为；缺失的 remove/rename 忽略，不回写药品或就诊原文。 */
 export function applyDictionaryActions(
@@ -69,7 +96,7 @@ export function applyDictionaryActions(
   return next;
 }
 
-/** 在调用方事务内重放字典行为；无行为时直接返回。 */
+/** 调用方须在任何实体读写锁之前调用 lockDictionaryForWrite；此处只在同一事务重放动作。 */
 export async function applyDictionaryActionsInTx(
   tx: Prisma.TransactionClient,
   userId: string,

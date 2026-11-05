@@ -21,7 +21,7 @@ import {
   trimToNull,
   trimUniqueStrings,
 } from '../../medicines/dto/transforms.js';
-import { DictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
+import { VisitDictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
 
 import {
   UniqueVisitMedicineIdsConstraint,
@@ -111,6 +111,6 @@ export class UpdateVisitDto {
   @IsArray()
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
-  @Type(() => DictionaryActionDto)
-  dictionaryActions?: DictionaryActionDto[];
+  @Type(() => VisitDictionaryActionDto)
+  dictionaryActions?: VisitDictionaryActionDto[];
 }

@@ -1,3 +1,4 @@
+import { lockUserWrites } from '../user-dictionaries/dictionary-actions.js';
 import { createHash } from 'node:crypto';
 import {
   BadRequestException,
@@ -198,7 +199,7 @@ export class SyncService {
     await this.prisma.$transaction(
       async (tx) => {
         // Serializes retries from overlapping app sessions before reading receipts.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))::text`;
+        await lockUserWrites(tx, userId);
         for (const command of commands) {
           if (command.user_id !== userId)
             throw new BadRequestException('操作账号不匹配');

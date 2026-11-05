@@ -9,7 +9,10 @@ import { UserContextService } from '../auth/user-context.service.js';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { createCabinetMedicine } from '../medicines/create-cabinet-medicine.js';
-import { applyDictionaryActionsInTx } from '../user-dictionaries/dictionary-actions.js';
+import {
+  applyDictionaryActionsInTx,
+  lockDictionaryForWrite,
+} from '../user-dictionaries/dictionary-actions.js';
 import { normalizeDictionaryActions } from '../user-dictionaries/dto/dictionary-action.dto.js';
 
 import { CreateVisitDto } from './dto/create-visit.dto.js';
@@ -378,7 +381,9 @@ export class VisitsService {
 
     if (mode === 'replace') {
       const keepIds = new Set(medicines.map((item) => item.id));
-      const toDelete = [...existingById.keys()].filter((id) => !keepIds.has(id));
+      const toDelete = [...existingById.keys()].filter(
+        (id) => !keepIds.has(id),
+      );
       if (toDelete.length > 0) {
         await tx.visit_medicines.deleteMany({
           where: { id: { in: toDelete }, visit_id: visitId },
@@ -483,9 +488,7 @@ export class VisitsService {
     const pageSize = query.pageSize ?? 20;
     const offset = (page - 1) * pageSize;
 
-    const conditions: Prisma.Sql[] = [
-      Prisma.sql`v.user_id = ${userId}::uuid`,
-    ];
+    const conditions: Prisma.Sql[] = [Prisma.sql`v.user_id = ${userId}::uuid`];
 
     if (query.year !== undefined) {
       conditions.push(
@@ -511,9 +514,7 @@ export class VisitsService {
     }
 
     if (query.onOrBefore) {
-      conditions.push(
-        Prisma.sql`v.visit_date <= ${query.onOrBefore}::date`,
-      );
+      conditions.push(Prisma.sql`v.visit_date <= ${query.onOrBefore}::date`);
     }
 
     if (query.q) {
@@ -580,6 +581,7 @@ export class VisitsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockDictionaryForWrite(tx, userId, dto);
         try {
           await tx.visit_records.create({
             data: {
@@ -622,7 +624,7 @@ export class VisitsService {
         await applyDictionaryActionsInTx(
           tx,
           userId,
-          normalizeDictionaryActions(dto.dictionaryActions),
+          normalizeDictionaryActions(dto.dictionaryActions, ['symptoms']),
         );
 
         return this.loadDetail(tx, userId, dto.id);
@@ -649,7 +651,7 @@ export class VisitsService {
       dictionaryActions,
       ...rest
     } = dto;
-    const actions = normalizeDictionaryActions(dictionaryActions);
+    const actions = normalizeDictionaryActions(dictionaryActions, ['symptoms']);
 
     const hasBusinessField =
       medicines !== undefined ||
@@ -671,6 +673,7 @@ export class VisitsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockDictionaryForWrite(tx, userId, dto);
         const needsSelfLock =
           requestedDate !== undefined ||
           (requestedInitial !== undefined && requestedInitial !== null);
@@ -697,7 +700,8 @@ export class VisitsService {
           throw new ConflictException(VERSION_CONFLICT);
         }
 
-        const nextVisitDate = requestedDate ?? formatDateOnly(current.visit_date);
+        const nextVisitDate =
+          requestedDate ?? formatDateOnly(current.visit_date);
         let nextInitial = current.initial_visit_id;
 
         if (requestedInitial !== undefined) {

@@ -4,11 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-
+import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { UserContextService } from '../auth/user-context.service.js';
 import {
   applyDictionaryActions,
+  lockUserWrites,
   type DictionaryAction,
 } from './dictionary-actions.js';
 import type { DictionaryField } from './dto/dictionary-field.js';
@@ -23,8 +24,6 @@ import {
   type UserDictionaryResponse,
 } from './user-dictionary-response.mapper.js';
 
-const MAX_FIELD_VALUES = 50;
-
 @Injectable()
 export class UserDictionariesService {
   constructor(
@@ -32,36 +31,31 @@ export class UserDictionariesService {
     private readonly context: UserContextService,
   ) {}
 
-  private getUserId(): string {
-    return this.context.getUserId();
-  }
-
-  private async findForUser(): Promise<UserDictionaryRecord> {
-    const item = await this.prisma.user_dictionaries.findUnique({
-      where: { user_id: this.getUserId() },
+  private async findForUser(
+    db: Pick<Prisma.TransactionClient, 'user_dictionaries'> = this.prisma,
+  ): Promise<UserDictionaryRecord> {
+    const item = await db.user_dictionaries.findUnique({
+      where: { user_id: this.context.getUserId() },
       select: USER_DICTIONARY_SELECT,
     });
     if (!item) throw new NotFoundException('用户字典不存在');
     return item;
   }
 
-  private fieldValues(
-    item: UserDictionaryRecord,
-    field: DictionaryField,
-  ): string[] {
-    return item[field];
-  }
-
-  private async saveField(
-    field: DictionaryField,
-    values: string[],
+  private mutate(
+    change: (item: UserDictionaryRecord) => Prisma.user_dictionariesUpdateInput,
   ): Promise<UserDictionaryResponse> {
-    const updated = await this.prisma.user_dictionaries.update({
-      where: { user_id: this.getUserId() },
-      data: { [field]: values },
-      select: USER_DICTIONARY_SELECT,
+    const userId = this.context.getUserId();
+    return this.prisma.$transaction(async (tx) => {
+      await lockUserWrites(tx, userId);
+      const item = await this.findForUser(tx);
+      const updated = await tx.user_dictionaries.update({
+        where: { user_id: userId },
+        data: change(item),
+        select: USER_DICTIONARY_SELECT,
+      });
+      return toUserDictionaryResponse(updated);
     });
-    return toUserDictionaryResponse(updated);
   }
 
   async findAll(): Promise<UserDictionaryResponse> {
@@ -71,83 +65,50 @@ export class UserDictionariesService {
   async findField(
     field: DictionaryField,
   ): Promise<UserDictionaryFieldResponse> {
-    const item = await this.findForUser();
-    return toUserDictionaryFieldResponse(field, this.fieldValues(item, field));
+    return toUserDictionaryFieldResponse(
+      field,
+      (await this.findForUser())[field],
+    );
   }
 
-  async addValues(
+  addValues(
     field: DictionaryField,
     dto: MutateDictionaryValuesDto,
   ): Promise<UserDictionaryResponse> {
-    const item = await this.findForUser();
-    const current = this.fieldValues(item, field);
-    const existing = new Set(current);
-    const merged = [...current];
-    for (const value of dto.values) {
-      if (!existing.has(value)) {
-        existing.add(value);
-        merged.push(value);
-      }
-    }
-    if (merged.length > MAX_FIELD_VALUES) {
-      throw new BadRequestException(`每个字典属性最多 ${MAX_FIELD_VALUES} 个标签`);
-    }
-    return this.saveField(field, merged);
+    return this.mutate((item) => {
+      const values = [...new Set([...item[field], ...dto.values])];
+      if (values.length > 50)
+        throw new BadRequestException('每个字典属性最多 50 个标签');
+      return { [field]: values };
+    });
   }
 
-  async removeValues(
+  removeValues(
     field: DictionaryField,
     dto: MutateDictionaryValuesDto,
   ): Promise<UserDictionaryResponse> {
-    const item = await this.findForUser();
-    const remove = new Set(dto.values);
-    const next = this.fieldValues(item, field).filter((value) => !remove.has(value));
-    return this.saveField(field, next);
+    return this.mutate((item) => ({
+      [field]: item[field].filter((value) => !dto.values.includes(value)),
+    }));
   }
 
-  async renameValue(
+  renameValue(
     field: DictionaryField,
     dto: RenameDictionaryValueDto,
   ): Promise<UserDictionaryResponse> {
-    if (dto.from === dto.to) {
-      throw new BadRequestException('新旧标签不能相同');
-    }
-    const item = await this.findForUser();
-    const current = this.fieldValues(item, field);
-    const fromIndex = current.indexOf(dto.from);
-    if (fromIndex < 0) {
-      throw new NotFoundException('标签不存在');
-    }
-    if (current.includes(dto.to)) {
-      throw new ConflictException('目标标签已存在');
-    }
-    const next = [...current];
-    next[fromIndex] = dto.to;
-    return this.saveField(field, next);
+    if (dto.from === dto.to) throw new BadRequestException('新旧标签不能相同');
+    return this.mutate((item) => {
+      const values = [...item[field]];
+      const index = values.indexOf(dto.from);
+      if (index < 0) throw new NotFoundException('标签不存在');
+      if (values.includes(dto.to))
+        throw new ConflictException('目标标签已存在');
+      values[index] = dto.to;
+      return { [field]: values };
+    });
   }
 
-  /** 按顺序重放药品或就诊保存附带的字典行为。 */
-  async applyActions(
-    actions: DictionaryAction[],
-  ): Promise<UserDictionaryResponse> {
-    const item = await this.findForUser();
-    const next = applyDictionaryActions(
-      {
-        categories: item.categories,
-        efficacies: item.efficacies,
-        symptoms: item.symptoms,
-      },
-      actions,
-    );
-    const updated = await this.prisma.user_dictionaries.update({
-      where: { user_id: this.getUserId() },
-      data: {
-        categories: next.categories,
-        efficacies: next.efficacies,
-        symptoms: next.symptoms,
-      },
-      select: USER_DICTIONARY_SELECT,
-    });
-    return toUserDictionaryResponse(updated);
+  applyActions(actions: DictionaryAction[]): Promise<UserDictionaryResponse> {
+    return this.mutate((item) => applyDictionaryActions(item, actions));
   }
 }

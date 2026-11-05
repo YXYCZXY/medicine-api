@@ -16,7 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
-import { DictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
+import { MedicineDictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
 import { trimString, trimToNull, trimUniqueStrings } from './transforms.js';
 
 /**
@@ -69,6 +69,6 @@ export class CreateCabinetMedicineDto {
   @IsArray()
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
-  @Type(() => DictionaryActionDto)
-  dictionaryActions?: DictionaryActionDto[];
+  @Type(() => MedicineDictionaryActionDto)
+  dictionaryActions?: MedicineDictionaryActionDto[];
 }

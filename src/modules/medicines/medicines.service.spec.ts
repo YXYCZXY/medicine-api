@@ -5,7 +5,10 @@ import type { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 
 import { UpdateMedicineDto } from './dto/update-medicine.dto.js';
-import { MEDICINE_SELECT, type MedicineRecord } from './medicine-response.mapper.js';
+import {
+  MEDICINE_SELECT,
+  type MedicineRecord,
+} from './medicine-response.mapper.js';
 import { MedicinesService } from './medicines.service.js';
 
 const USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -53,6 +56,7 @@ function createPrismaMock() {
         symptoms: ['发热咳嗽'],
       }),
     },
+    $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn(),
   };
   prisma.$transaction.mockImplementation(

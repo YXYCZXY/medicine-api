@@ -23,7 +23,7 @@ import {
   trimToNull,
   trimUniqueStrings,
 } from '../../medicines/dto/transforms.js';
-import { DictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
+import { VisitDictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
 import { isVisitDateNotAfterToday } from '../visit-date.js';
 
 import { VisitMedicineDto } from './visit-medicine.dto.js';
@@ -78,9 +78,7 @@ class UniqueVisitMedicineIdsConstraint implements ValidatorConstraintInterface {
 }
 
 @ValidatorConstraint({ name: 'uniqueVisitMedicineMedicineIds', async: false })
-class UniqueVisitMedicineMedicineIdsConstraint
-  implements ValidatorConstraintInterface
-{
+class UniqueVisitMedicineMedicineIdsConstraint implements ValidatorConstraintInterface {
   validate(value: unknown): boolean {
     if (!Array.isArray(value)) {
       return true;
@@ -180,8 +178,8 @@ export class CreateVisitDto {
   @IsArray()
   @ArrayMaxSize(100)
   @ValidateNested({ each: true })
-  @Type(() => DictionaryActionDto)
-  dictionaryActions?: DictionaryActionDto[];
+  @Type(() => VisitDictionaryActionDto)
+  dictionaryActions?: VisitDictionaryActionDto[];
 }
 
 // re-export for UpdateVisitDto reuse of constraints

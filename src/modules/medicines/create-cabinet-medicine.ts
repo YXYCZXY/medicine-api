@@ -42,7 +42,10 @@ export async function createCabinetMedicine(
   await applyDictionaryActionsInTx(
     tx,
     userId,
-    normalizeDictionaryActions(cabinet.dictionaryActions),
+    normalizeDictionaryActions(cabinet.dictionaryActions, [
+      'categories',
+      'efficacies',
+    ]),
   );
   return created.id;
 }

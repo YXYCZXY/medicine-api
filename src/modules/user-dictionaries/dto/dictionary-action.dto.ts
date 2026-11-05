@@ -1,13 +1,11 @@
-import { Transform, Type } from 'class-transformer';
+import { BadRequestException } from '@nestjs/common';
+import { Transform } from 'class-transformer';
 import {
-  ArrayMaxSize,
-  IsArray,
   IsIn,
   IsNotEmpty,
   IsString,
   MaxLength,
   ValidateIf,
-  ValidateNested,
 } from 'class-validator';
 
 import { trimString } from '../../medicines/dto/transforms.js';
@@ -20,7 +18,10 @@ export class DictionaryActionDto {
   @IsIn(['add', 'remove', 'rename'])
   op!: 'add' | 'remove' | 'rename';
 
-  @ValidateIf((action: DictionaryActionDto) => action.op === 'add' || action.op === 'remove')
+  @ValidateIf(
+    (action: DictionaryActionDto) =>
+      action.op === 'add' || action.op === 'remove',
+  )
   @Transform(trimString)
   @IsString()
   @IsNotEmpty()
@@ -42,10 +43,28 @@ export class DictionaryActionDto {
   to?: string;
 }
 
+export class MedicineDictionaryActionDto extends DictionaryActionDto {
+  @IsIn(['categories', 'efficacies'])
+  declare field: 'categories' | 'efficacies';
+}
+
+export class VisitDictionaryActionDto extends DictionaryActionDto {
+  @IsIn(['symptoms'])
+  declare field: 'symptoms';
+}
+
 /** 规范化后供业务层使用的字典行为。 */
 export type NormalizedDictionaryAction =
-  | { field: (typeof DICTIONARY_ACTION_FIELDS)[number]; op: 'add'; value: string }
-  | { field: (typeof DICTIONARY_ACTION_FIELDS)[number]; op: 'remove'; value: string }
+  | {
+      field: (typeof DICTIONARY_ACTION_FIELDS)[number];
+      op: 'add';
+      value: string;
+    }
+  | {
+      field: (typeof DICTIONARY_ACTION_FIELDS)[number];
+      op: 'remove';
+      value: string;
+    }
   | {
       field: (typeof DICTIONARY_ACTION_FIELDS)[number];
       op: 'rename';
@@ -55,9 +74,13 @@ export type NormalizedDictionaryAction =
 
 export function normalizeDictionaryActions(
   actions: DictionaryActionDto[] | undefined,
+  allowedFields: readonly DictionaryActionDto['field'][] = DICTIONARY_ACTION_FIELDS,
 ): NormalizedDictionaryAction[] | undefined {
   if (!actions?.length) return undefined;
   return actions.map((action) => {
+    if (!allowedFields.includes(action.field)) {
+      throw new BadRequestException('当前业务不允许修改该字典字段');
+    }
     if (action.op === 'rename') {
       return {
         field: action.field,
