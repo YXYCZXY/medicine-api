@@ -8,7 +8,6 @@ import {
   IsPositive,
   IsDateString,
   IsArray,
-  IsUUID,
   ArrayMaxSize,
   Matches,
   Min,
@@ -27,9 +26,12 @@ export class CreateMedicineDto {
   @MaxLength(100)
   name!: string;
 
-  // 药品分类 ID，一个药品只属于一个预置分类
-  @IsUUID('4')
-  categoryId!: string;
+  // 药品大类，保存单个文本标签
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  category!: string;
 
   // 当前库存数量
   @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })

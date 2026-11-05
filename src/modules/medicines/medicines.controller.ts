@@ -29,15 +29,6 @@ export class MedicinesController {
   ) {}
 
   /**
-   * 获取全部药品分类
-   * GET /medicines/categories
-   */
-  @Get('categories')
-  findCategories() {
-    return this.medicinesService.findCategories();
-  }
-
-  /**
    * 获取药品列表
    * GET /medicines
    */

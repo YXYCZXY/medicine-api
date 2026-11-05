@@ -12,25 +12,6 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 
 -- ---------------------------------------------------------
--- 2. 药品分类表
--- 由开发人员预置，全局共享；用户只能选择，不能增删改
--- ---------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS medicine_categories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    -- 分类名称
-    name VARCHAR(50) NOT NULL UNIQUE,
-
-    -- 排序，数字越小越靠前
-    sort_order INTEGER NOT NULL DEFAULT 0,
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-
--- ---------------------------------------------------------
 -- 3. 药箱主表
 -- 所有用户共用一张表，通过 user_id 区分各自的药箱
 -- ---------------------------------------------------------
@@ -42,8 +23,8 @@ CREATE TABLE IF NOT EXISTS medicine_items (
     -- 目前用户系统还没建立，所以暂时不添加外键
     user_id UUID NOT NULL,
 
-    -- 所属分类，一个药品只属于一个分类
-    category_id UUID NOT NULL,
+    -- 药品大类，保存单个非空文本标签
+    category VARCHAR(50) NOT NULL,
 
     -- 药品名称
     -- 注意：不能 UNIQUE，同一种药可能存在多盒/多批次
@@ -90,12 +71,6 @@ CREATE TABLE IF NOT EXISTS medicine_items (
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    -- 分类被药品引用时禁止删除
-    CONSTRAINT fk_medicine_items_category
-        FOREIGN KEY (category_id)
-        REFERENCES medicine_categories(id)
-        ON DELETE RESTRICT,
 
     -- 库存不能小于 0
     CONSTRAINT medicine_items_quantity_check
@@ -258,7 +233,7 @@ ON medicine_items(user_id, name);
 
 -- 用户 + 分类联合查询
 CREATE INDEX IF NOT EXISTS idx_medicine_items_user_category
-ON medicine_items(user_id, category_id);
+ON medicine_items(user_id, category);
 
 -- 按分组根 UUID 查询同组复诊
 CREATE INDEX IF NOT EXISTS idx_visit_records_initial_visit
@@ -303,15 +278,6 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 
-DROP TRIGGER IF EXISTS update_medicine_categories_updated_at
-ON medicine_categories;
-
-CREATE TRIGGER update_medicine_categories_updated_at
-BEFORE UPDATE ON medicine_categories
-FOR EACH ROW
-EXECUTE FUNCTION update_updated_at_column();
-
-
 DROP TRIGGER IF EXISTS update_visit_records_updated_at
 ON visit_records;
 
@@ -330,18 +296,3 @@ FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
 
--- ---------------------------------------------------------
--- 8. 初始化常用分类
--- ---------------------------------------------------------
-
-INSERT INTO medicine_categories (name, sort_order)
-VALUES
-    ('感冒发烧', 10),
-    ('止痛', 20),
-    ('肠胃', 30),
-    ('过敏', 40),
-    ('外伤', 50),
-    ('抗感染', 60),
-    ('慢性病', 70),
-    ('其他', 999)
-ON CONFLICT (name) DO NOTHING;

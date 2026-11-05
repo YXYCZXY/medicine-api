@@ -65,9 +65,6 @@ function createMock() {
       create: vi.fn().mockResolvedValue({ id: MED }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
-    medicine_categories: {
-      findUnique: vi.fn().mockResolvedValue({ id: 'category' }),
-    },
     medicine_expiry_states: { upsert: vi.fn() },
   };
   return {
@@ -311,7 +308,7 @@ describe('RemindersService', () => {
     expect(prisma.tx.health_reminders.create).not.toHaveBeenCalled();
   });
 
-  it('药品入箱与快照使用同一个事务，复用已有分类检查', async () => {
+  it('药品入箱与快照使用同一个事务并保存大类文本', async () => {
     await service.create({
       id: ID,
       type: 'med',
@@ -323,16 +320,12 @@ describe('RemindersService', () => {
         name: '药品',
         unit: '粒',
         dosePerTime: 0.5,
-        cabinet: { categoryId: MED, quantity: 3 },
+        cabinet: { category: '止痛', quantity: 3 },
       },
-    });
-    expect(prisma.tx.medicine_categories.findUnique).toHaveBeenCalledWith({
-      where: { id: MED },
-      select: { id: true },
     });
     expect(prisma.tx.medicine_items.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({ user_id: USER, dose_per_time: 0.5 }),
+        data: expect.objectContaining({ user_id: USER, category: '止痛', dose_per_time: 0.5 }),
       }),
     );
     expect(prisma.tx.health_reminder_medicines.upsert).toHaveBeenCalledWith(

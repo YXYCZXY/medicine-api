@@ -8,7 +8,6 @@ import {
   IsPositive,
   IsDateString,
   IsArray,
-  IsUUID,
   ArrayMaxSize,
   Matches,
   Min,
@@ -33,12 +32,15 @@ export class UpdateMedicineDto {
   name?: string;
 
   /**
-   * 药品分类 ID
-   * 可选，传入时必须是存在的预置分类，不能为 null
+   * 药品大类
+   * 可选，传入时必须是非空文本，不能为 null
    */
   @ValidateIf((_, value) => value !== undefined)
-  @IsUUID('4')
-  categoryId?: string;
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  category?: string;
 
   /**
    * 当前库存数量

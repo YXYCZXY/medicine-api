@@ -11,7 +11,6 @@ import { PrismaService } from '../src/database/prisma/prisma.service.js';
 import { Prisma } from '../src/generated/prisma/client.js';
 
 const USER_ID = '00000000-0000-4000-8000-000000000001';
-const CATEGORY_ID = '55555555-5555-4555-8555-555555555555';
 const VISIT_ID = '33333333-3333-4333-8333-333333333333';
 const LINE_ID = '66666666-6666-4666-8666-666666666666';
 
@@ -251,11 +250,6 @@ function createPrismaFake() {
         return { id };
       }),
     },
-    medicine_categories: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
-        where.id === CATEGORY_ID ? { id: CATEGORY_ID } : null,
-      ),
-    },
   };
 
   return {
@@ -494,7 +488,7 @@ describe('Visits API (e2e)', () => {
             timesPerDay: 3,
             medicationTimings: [],
             cabinet: {
-              categoryId: CATEGORY_ID,
+              category: '止痛',
               quantity: 12,
               expirationDate: '2027-08-01',
               efficacyTags: ['止咳'],
@@ -508,6 +502,10 @@ describe('Visits API (e2e)', () => {
 
     expect(response.statusCode).toBe(201);
     expect(prisma.items.size).toBe(1);
+    expect([...prisma.items.values()][0]).toMatchObject({
+      category: '止痛',
+      quantity: 12,
+    });
     expect(response.json().medicines[0].medicineId).toBeTruthy();
   });
 });

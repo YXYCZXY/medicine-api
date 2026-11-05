@@ -11,11 +11,8 @@ import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { CreateMedicineDto } from './dto/create-medicine.dto.js';
 import { UpdateMedicineDto } from './dto/update-medicine.dto.js';
 import {
-  CATEGORY_SELECT,
   MEDICINE_SELECT,
-  toCategoryResponse,
   toMedicineResponse,
-  type CategoryResponse,
   type MedicineResponse,
 } from './medicine-response.mapper.js';
 
@@ -38,44 +35,10 @@ export class MedicinesService {
   }
 
   /**
-   * 校验分类存在，分类只能从预置数据中选择
-   */
-  private async assertCategoryExists(categoryId: string) {
-    const category = await this.prisma.medicine_categories.findUnique({
-      where: {
-        id: categoryId,
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!category) {
-      throw new BadRequestException('药品分类不存在');
-    }
-  }
-
-  /**
-   * 获取所有药品分类
-   * GET /medicines/categories
-   */
-  async findCategories(): Promise<CategoryResponse[]> {
-    const categories = await this.prisma.medicine_categories.findMany({
-      select: CATEGORY_SELECT,
-      orderBy: [
-        { sort_order: 'asc' },
-        { name: 'asc' },
-      ],
-    });
-
-    return categories.map(toCategoryResponse);
-  }
-
-  /**
    * 获取当前用户的所有药品
    * GET /medicines
    *
-   * 返回药品及其所属分类
+   * 返回药品及其大类文本
    */
   async findAll(): Promise<MedicineResponse[]> {
     const items = await this.prisma.medicine_items.findMany({
@@ -96,13 +59,11 @@ export class MedicinesService {
    * POST /medicines
    */
   async create(dto: CreateMedicineDto, id?: string): Promise<MedicineResponse> {
-    await this.assertCategoryExists(dto.categoryId);
-
     const medicine = await this.prisma.medicine_items.create({
       data: {
         ...(id ? { id } : {}),
         user_id: this.getUserId(),
-        category_id: dto.categoryId,
+        category: dto.category,
         name: dto.name,
         quantity: dto.quantity,
         unit: dto.unit,
@@ -154,12 +115,7 @@ export class MedicinesService {
       throw new NotFoundException('药品不存在');
     }
 
-    // 2. 如果需要修改分类，先验证分类 ID
-    if (dto.categoryId !== undefined) {
-      await this.assertCategoryExists(dto.categoryId);
-    }
-
-    // 3. 更新药品
+    // 2. 更新药品
     const medicine = await this.prisma.medicine_items.update({
       where: {
         id,
@@ -170,8 +126,8 @@ export class MedicinesService {
           ? { name: dto.name }
           : {}),
 
-        ...(dto.categoryId !== undefined
-          ? { category_id: dto.categoryId }
+        ...(dto.category !== undefined
+          ? { category: dto.category }
           : {}),
 
         ...(dto.quantity !== undefined
@@ -220,7 +176,7 @@ export class MedicinesService {
    * 删除药品
    * DELETE /medicines/:id
    *
-   * 只删除当前用户的药品记录，不影响分类表
+   * 只删除当前用户的药品记录
    */
   async remove(id: string): Promise<void> {
     const userId = this.getUserId();

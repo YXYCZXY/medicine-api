@@ -6,19 +6,6 @@
 
 
 -- ---------------------------------------------------------
--- 1. 药品分类表
--- ---------------------------------------------------------
-
-COMMENT ON TABLE medicine_categories IS '药品分类表，由开发人员预置、全局共享，用户只能选择';
-
-COMMENT ON COLUMN medicine_categories.id IS '主键 ID';
-COMMENT ON COLUMN medicine_categories.name IS '分类名称，唯一';
-COMMENT ON COLUMN medicine_categories.sort_order IS '排序，数字越小越靠前';
-COMMENT ON COLUMN medicine_categories.created_at IS '创建时间';
-COMMENT ON COLUMN medicine_categories.updated_at IS '更新时间';
-
-
--- ---------------------------------------------------------
 -- 2. 药箱主表
 -- ---------------------------------------------------------
 
@@ -26,7 +13,7 @@ COMMENT ON TABLE medicine_items IS '药箱主表，记录用户药箱中的药�
 
 COMMENT ON COLUMN medicine_items.id IS '主键 ID';
 COMMENT ON COLUMN medicine_items.user_id IS '所属用户 ID，关联 users.id';
-COMMENT ON COLUMN medicine_items.category_id IS '所属分类 ID，关联 medicine_categories.id，一个药品只属于一个分类';
+COMMENT ON COLUMN medicine_items.category IS '药品大类，保存单个非空文本标签';
 COMMENT ON COLUMN medicine_items.name IS '药品名称（同一种药可能存在多盒/多批次，不唯一）';
 COMMENT ON COLUMN medicine_items.specification IS '规格，例如：0.25g × 24粒';
 COMMENT ON COLUMN medicine_items.dosage_form IS '剂型，例如：胶囊、颗粒剂、糖浆';
@@ -44,7 +31,6 @@ COMMENT ON COLUMN medicine_items.note IS '用户备注';
 COMMENT ON COLUMN medicine_items.created_at IS '创建时间';
 COMMENT ON COLUMN medicine_items.updated_at IS '更新时间';
 
-COMMENT ON CONSTRAINT fk_medicine_items_category ON medicine_items IS '药品分类外键，分类被药品引用时禁止删除';
 COMMENT ON CONSTRAINT medicine_items_quantity_check ON medicine_items IS '库存不能小于 0';
 COMMENT ON CONSTRAINT medicine_items_dose_per_time_check ON medicine_items IS '每次用量必须大于 0';
 COMMENT ON CONSTRAINT medicine_items_times_per_day_check ON medicine_items IS '每天次数必须大于 0';

@@ -32,6 +32,12 @@ function createPrismaFake() {
         where.account ? users.get(where.account) ?? null : [...users.values()].find((user) => user.id === where.id) ?? null),
       update: vi.fn(async ({ where }: { where: { id: string } }) => [...users.values()].find((user) => user.id === where.id)),
     },
+    user_dictionaries: {
+      create: vi.fn(async ({ data }: { data: { user_id: string; categories: string[]; efficacies: string[]; symptoms: string[] } }) => ({
+        id: randomUUID(),
+        ...data,
+      })),
+    },
     user_sessions: {
       create: vi.fn(async ({ data }: { data: Pick<Session, 'user_id' | 'token_hash' | 'expires_at'> }) => {
         const session: Session = { ...data, id: randomUUID(), revoked_at: null };

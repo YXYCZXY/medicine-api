@@ -102,7 +102,7 @@ describe('Reminders API 参数与路由', () => {
       medicineId: null,
       name: '药品',
       unit: '粒',
-      cabinet: { categoryId: MED, quantity: -1 },
+      cabinet: { category: '止痛', quantity: -1 },
     },
     { medicineId: null, name: '药品', unit: '粒', medicationTimings: null },
   ])('药品嵌套校验不被绕过：%j', async (medicine) => {

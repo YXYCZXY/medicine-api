@@ -31,7 +31,7 @@ describe.skipIf(!url)('离线同步 PostgreSQL 原子性、幂等与恢复', () 
   const schema = `sync_test_${randomUUID().replaceAll('-', '')}`;
   const medicine = {
     name: '离线药',
-    categoryId: '31000000-0000-4000-8000-000000000001',
+    category: '感冒发烧',
     quantity: 4,
     unit: '粒',
     expirationDate: null,
@@ -115,7 +115,7 @@ describe.skipIf(!url)('离线同步 PostgreSQL 原子性、幂等与恢复', () 
     }
   });
 
-  it('首次离线分类别名可用，重复创建/响应丢失重试只有一条药品', async () => {
+  it('首次离线创建可用，重复创建/响应丢失重试只有一条药品，快照返回文本大类', async () => {
     const id = randomUUID();
     const create = command('medicine.create', id, medicine);
     const first = await service.commands([create]);
@@ -123,8 +123,54 @@ describe.skipIf(!url)('离线同步 PostgreSQL 原子性、幂等与恢复', () 
     expect(first.results[0].status).toBe('accepted');
     expect(retried.results).toEqual(first.results);
     expect(retried.medicines).toHaveLength(1);
-    expect(retried.medicines[0]).toMatchObject({ id, version: 1 });
+    expect(retried.medicines[0]).toMatchObject({
+      id,
+      version: 1,
+      category: '感冒发烧',
+    });
+    expect(retried).not.toHaveProperty('categories');
     expect((await other.snapshot(device)).medicines).toEqual([]);
+  });
+  it('药品更新可省略大类并保持原值，旧 categoryId 被拒绝', async () => {
+    const id = randomUUID();
+    const create = command('medicine.create', id, medicine);
+    await service.commands([create]);
+    const omitCategory = command(
+      'medicine.update',
+      id,
+      { name: '已改名', quantity: 3 },
+      null,
+      create,
+    );
+    const kept = await service.commands([omitCategory]);
+    expect(kept.results.at(-1)?.status).toBe('accepted');
+    expect(kept.medicines[0]).toMatchObject({
+      id,
+      name: '已改名',
+      quantity: 3,
+      category: '感冒发烧',
+    });
+    expect(kept).not.toHaveProperty('categories');
+    const rejected = await service.commands([
+      command(
+        'medicine.update',
+        id,
+        {
+          name: '覆盖失败',
+          categoryId: '11111111-1111-4111-8111-111111111111',
+        },
+        null,
+        omitCategory,
+      ),
+    ]);
+    expect(rejected.results.at(-1)).toMatchObject({
+      status: 'rejected',
+      error: '操作内容校验失败，请核对原记录',
+    });
+    expect(rejected.medicines[0]).toMatchObject({
+      name: '已改名',
+      category: '感冒发烧',
+    });
   });
   it('真实 HTTP 接口通过鉴权上下文和 DTO 校验后才能提交命令', async () => {
     let requestContext: RequestContext;
@@ -208,7 +254,7 @@ describe.skipIf(!url)('离线同步 PostgreSQL 原子性、幂等与恢复', () 
           unit: '粒',
           cabinet: {
             id: randomUUID(),
-            categoryId: medicine.categoryId,
+            category: medicine.category,
             quantity: 1,
           },
         },
@@ -281,7 +327,7 @@ describe.skipIf(!url)('离线同步 PostgreSQL 原子性、幂等与恢复', () 
         dosePerTime: 0.5,
         timesPerDay: 1,
         medicationTimings: [],
-        cabinet: { id: medId, categoryId: medicine.categoryId, quantity: 2 },
+        cabinet: { id: medId, category: medicine.category, quantity: 2 },
       },
     });
     create.client_occurred_at = yesterday;

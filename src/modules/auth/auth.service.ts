@@ -2,6 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { createHash, randomBytes } from 'node:crypto';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { DEFAULT_USER_DICTIONARY } from './default-user-dictionary.js';
 import { hashPassword, verifyPassword } from './password.js';
 import { UserContextService } from './user-context.service.js';
 
@@ -46,6 +47,14 @@ export class AuthService {
           password_hash: passwordHash,
           nickname,
         } });
+        await tx.user_dictionaries.create({
+          data: {
+            user_id: user.id,
+            categories: [...DEFAULT_USER_DICTIONARY.categories],
+            efficacies: [...DEFAULT_USER_DICTIONARY.efficacies],
+            symptoms: [...DEFAULT_USER_DICTIONARY.symptoms],
+          },
+        });
         return this.createSession(user, tx);
       });
     } catch (error) {

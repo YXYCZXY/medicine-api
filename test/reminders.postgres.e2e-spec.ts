@@ -27,7 +27,6 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
   let client: PrismaClient;
   let service: RemindersService;
   let otherService: RemindersService;
-  let categoryId: string;
   const schema = `reminders_test_${randomUUID().replaceAll('-', '')}`;
   const today = todayInBusinessTz();
 
@@ -58,7 +57,6 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
         password_hash: 'test-only',
       })),
     });
-    categoryId = (await client.medicine_categories.findFirstOrThrow()).id;
     service = new RemindersService(
       client as PrismaService,
       { getUserId: () => USER } as UserContextService,
@@ -118,7 +116,7 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
             medicineId: null,
             name: 'rollback-test',
             unit: '粒',
-            cabinet: { categoryId, quantity: 2 },
+            cabinet: { category: '止痛', quantity: 2 },
           },
         }),
       ).rejects.toThrow();
@@ -142,13 +140,16 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
         medicineId: null,
         name: '药品',
         unit: '粒',
-        cabinet: { categoryId, quantity: 2 },
+        cabinet: { category: '止痛', quantity: 2 },
       },
     };
     await service.create(dto);
     await expect(service.create(dto)).rejects.toBeInstanceOf(ConflictException);
     expect(await client.medicine_items.count()).toBe(1);
     expect(await client.health_reminders.count()).toBe(1);
+    expect(await client.medicine_items.findFirstOrThrow()).toMatchObject({
+      category: '止痛',
+    });
   });
 
   it('药箱修改不覆盖快照；删除药品仅置空关联', async () => {
@@ -163,7 +164,7 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
         name: '旧药名',
         unit: '粒',
         dosePerTime: 0.5,
-        cabinet: { categoryId, quantity: 2 },
+        cabinet: { category: '止痛', quantity: 2 },
       },
     });
     await client.medicine_items.update({
@@ -293,7 +294,7 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
       await client.medicine_items.create({
         data: {
           user_id: USER,
-          category_id: categoryId,
+          category: '止痛',
           name: '药品',
           unit: '粒',
           quantity: 1,
@@ -304,7 +305,7 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
     await client.medicine_items.create({
       data: {
         user_id: USER,
-        category_id: categoryId,
+        category: '止痛',
         name: '空药品',
         unit: '粒',
         quantity: 0,
@@ -357,7 +358,7 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
     const medicine = await client.medicine_items.create({
       data: {
         user_id: USER,
-        category_id: categoryId,
+        category: '止痛',
         name: '药品',
         unit: '粒',
         quantity: 1,
@@ -408,7 +409,7 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
         unit: '粒',
         dosePerTime: 0.5,
         timesPerDay: 3,
-        cabinet: { categoryId, quantity },
+        cabinet: { category: '止痛', quantity },
       },
     });
   }

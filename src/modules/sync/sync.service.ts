@@ -12,6 +12,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { UserContextService } from '../auth/user-context.service.js';
 import { MedicinesService } from '../medicines/medicines.service.js';
 import { CreateMedicineDto } from '../medicines/dto/create-medicine.dto.js';
+import { UpdateMedicineDto } from '../medicines/dto/update-medicine.dto.js';
 import { VisitsService } from '../visits/visits.service.js';
 import { CreateVisitDto } from '../visits/dto/create-visit.dto.js';
 import { UpdateVisitDto } from '../visits/dto/update-visit.dto.js';
@@ -40,16 +41,6 @@ type Result = {
   sequence: number;
   versions?: Record<string, number>;
 };
-const DIRECTORY = [
-  '感冒发烧',
-  '止痛',
-  '肠胃',
-  '过敏',
-  '外伤',
-  '抗感染',
-  '慢性病',
-  '其他',
-];
 const json = (value: unknown): Prisma.InputJsonValue =>
   JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 
@@ -148,7 +139,6 @@ export class SyncService {
       userId,
       complete: true,
       serverTime: new Date().toISOString(),
-      categories: await medicines.findCategories(),
       medicines: await medicines.findAll(),
       visits: await Promise.all(visitIds.map((row) => visits.findOne(row.id))),
       reminders: rules.map((row) =>
@@ -276,19 +266,6 @@ export class SyncService {
     return this.snapshot(commands[0].device_id);
   }
 
-  private async category(tx: Tx, categoryId: unknown): Promise<unknown> {
-    if (typeof categoryId !== 'string') return categoryId;
-    const match = /^31000000-0000-4000-8000-00000000000([1-8])$/.exec(
-      categoryId,
-    );
-    if (!match) return categoryId;
-    const category = await tx.medicine_categories.findUnique({
-      where: { name: DIRECTORY[Number(match[1]) - 1] },
-    });
-    if (!category) throw new BadRequestException('药品分类目录尚未准备完成');
-    return category.id;
-  }
-
   private async apply(tx: Tx, command: SyncCommandDto): Promise<number | null> {
     if (![1, 2].includes(command.schema_version))
       throw new BadRequestException('操作协议版本暂不支持，原输入已保留');
@@ -391,26 +368,13 @@ export class SyncService {
         delete payload.quantityMinor;
         delete payload.dosePerTimeMinor;
       }
-      payload.categoryId = await this.category(tx, payload.categoryId);
-      const dto = await checked(CreateMedicineDto, payload);
-      const result =
-        command.type === 'medicine.create'
-          ? await medicines.create(dto, command.entity_id)
-          : await medicines.update(command.entity_id, dto);
-      return result.version;
-    }
-    // Normalize the stable offline directory without changing original command payloads/digests.
-    const normalizeMedicine = async (value: unknown) => {
-      if (value && typeof value === 'object' && 'cabinet' in value) {
-        const cabinet = (value as { cabinet?: Record<string, unknown> })
-          .cabinet;
-        if (cabinet)
-          cabinet.categoryId = await this.category(tx, cabinet.categoryId);
+      if (command.type === 'medicine.create') {
+        const dto = await checked(CreateMedicineDto, payload);
+        return (await medicines.create(dto, command.entity_id)).version;
       }
-    };
-    if (Array.isArray(payload.medicines))
-      for (const item of payload.medicines) await normalizeMedicine(item);
-    await normalizeMedicine(payload.medicine);
+      const dto = await checked(UpdateMedicineDto, payload);
+      return (await medicines.update(command.entity_id, dto)).version;
+    }
     if (kind === 'visit') {
       const photos: unknown = payload.photos;
       delete payload.photos;

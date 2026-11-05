@@ -13,13 +13,7 @@ import { PrismaService } from '../src/database/prisma/prisma.service.js';
 import { Prisma } from '../src/generated/prisma/client.js';
 
 const OTHER_USER_ID = '99999999-9999-4999-8999-999999999999';
-const CATEGORY_ID = '22222222-2222-4222-8222-222222222222';
 const MISSING_ID = '33333333-3333-4333-8333-333333333333';
-
-const CATEGORIES = [
-  { id: '44444444-4444-4444-8444-444444444444', name: '其他', sort_order: 8 },
-  { id: CATEGORY_ID, name: '止痛', sort_order: 2 },
-];
 
 type Row = Record<string, unknown> & { id: string; user_id: string };
 
@@ -29,12 +23,6 @@ type Row = Record<string, unknown> & { id: string; user_id: string };
 function createPrismaFake() {
   const rows = new Map<string, Row>();
 
-  const withCategory = (row: Row) => ({
-    ...row,
-    medicine_categories:
-      CATEGORIES.find((category) => category.id === row.category_id) ?? null,
-  });
-
   const toDecimal = (value: unknown) =>
     value === null || value === undefined
       ? null
@@ -42,20 +30,10 @@ function createPrismaFake() {
 
   return {
     rows,
-    medicine_categories: {
-      findMany: vi.fn(async () =>
-        [...CATEGORIES].sort((a, b) => a.sort_order - b.sort_order),
-      ),
-      findUnique: vi.fn(
-        async ({ where }: { where: { id: string } }) =>
-          CATEGORIES.find((category) => category.id === where.id) ?? null,
-      ),
-    },
     medicine_items: {
       findMany: vi.fn(async ({ where }: { where: { user_id: string } }) =>
         [...rows.values()]
-          .filter((row) => row.user_id === where.user_id)
-          .map(withCategory),
+          .filter((row) => row.user_id === where.user_id),
       ),
       findFirst: vi.fn(
         async ({ where }: { where: { id: string; user_id: string } }) => {
@@ -73,7 +51,7 @@ function createPrismaFake() {
           updated_at: now,
         };
         rows.set(row.id, row);
-        return withCategory(row);
+        return row;
       }),
       update: vi.fn(
         async ({
@@ -88,7 +66,7 @@ function createPrismaFake() {
           if ('dose_per_time' in data) {
             row.dose_per_time = toDecimal(data.dose_per_time);
           }
-          return withCategory(row);
+          return row;
         },
       ),
       deleteMany: vi.fn(
@@ -111,7 +89,7 @@ describe('Medicines API (e2e)', () => {
 
   const validPayload = {
     name: '  布洛芬缓释胶囊  ',
-    categoryId: CATEGORY_ID,
+    category: '止痛',
     quantity: 12,
     unit: '支',
     expirationDate: '2027-03-01',
@@ -148,17 +126,9 @@ describe('Medicines API (e2e)', () => {
     await app.close();
   });
 
-  it('GET /medicines/categories 按 sortOrder 返回 camelCase 分类', async () => {
-    const response = await app.inject({
-      method: 'GET',
-      url: '/medicines/categories',
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual([
-      { id: CATEGORY_ID, name: '止痛', sortOrder: 2 },
-      { id: CATEGORIES[0].id, name: '其他', sortOrder: 8 },
-    ]);
+  it('分类目录接口已移除', async () => {
+    const response = await app.inject({ method: 'GET', url: '/medicines/categories' });
+    expect(response.statusCode).toBe(404);
   });
 
   it('完成一次新增、查询、修改、删除流程', async () => {
@@ -181,7 +151,7 @@ describe('Medicines API (e2e)', () => {
       medicationTimings: ['after-meal', 'bedtime'],
       locationId: 'fridge',
       note: null,
-      category: { id: CATEGORY_ID, name: '止痛' },
+      category: '止痛',
     });
     expect(medicine).not.toHaveProperty('user_id');
     expect(medicine).not.toHaveProperty('dose_per_time');
@@ -221,6 +191,11 @@ describe('Medicines API (e2e)', () => {
     [{ name: '   ' }, '药品名称不能为空'],
     [{ note: 'a'.repeat(501) }, '备注长度超出限制'],
     [{ specification: '0.3g × 24粒' }, '不支持的字段：specification'],
+    [{ category: '   ' }, '药品分类不能为空'],
+    [{ category: 'a'.repeat(51) }, '药品分类长度超出限制'],
+    [{ category: null }, '药品分类不能为空'],
+    [{ category: ['止痛'] }, '药品分类必须是文本'],
+    [{ categoryId: '11111111-1111-4111-8111-111111111111' }, '不支持的字段：categoryId'],
   ])('POST 参数非法时返回 400：%j', async (patch, message) => {
     const response = await app.inject({
       method: 'POST',
@@ -233,18 +208,48 @@ describe('Medicines API (e2e)', () => {
     expect(prisma.medicine_items.create).not.toHaveBeenCalled();
   });
 
-  it('分类不存在时返回 400', async () => {
+  it('POST 缺少大类时返回 400', async () => {
+    const { category: _omit, ...withoutCategory } = validPayload;
     const response = await app.inject({
       method: 'POST',
       url: '/medicines',
-      payload: { ...validPayload, categoryId: MISSING_ID },
+      payload: withoutCategory,
     });
 
     expect(response.statusCode).toBe(400);
     expect(response.json()).toEqual({
       statusCode: 400,
-      message: '药品分类不存在',
+      message: '药品分类不能为空',
     });
+    expect(prisma.medicine_items.create).not.toHaveBeenCalled();
+  });
+
+  it('创建时去除大类首尾空格，局部更新不传大类时保持原值', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/medicines',
+      payload: { ...validPayload, category: '  解热镇痛  ' },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().category).toBe('解热镇痛');
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/medicines/${created.json().id}`,
+      payload: { quantity: 10 },
+    });
+
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json()).toMatchObject({
+      quantity: 10,
+      category: '解热镇痛',
+    });
+    expect(prisma.medicine_items.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { quantity: 10 },
+      }),
+    );
   });
 
   it('PATCH 空请求返回 400', async () => {

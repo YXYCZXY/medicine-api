@@ -14,7 +14,7 @@ import {
   Min,
 } from 'class-validator';
 
-import { trimToNull, trimUniqueStrings } from './transforms.js';
+import { trimString, trimToNull, trimUniqueStrings } from './transforms.js';
 
 /**
  * 就诊或提醒入箱时的药箱专属字段；药名、单位和剂量取自所在快照。
@@ -24,8 +24,11 @@ export class CreateCabinetMedicineDto {
   @IsUUID('4')
   id?: string;
 
-  @IsUUID('4')
-  categoryId!: string;
+  @Transform(trimString)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  category!: string;
 
   @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
   @Min(0)

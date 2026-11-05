@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { CreateCabinetMedicineDto } from './dto/create-cabinet-medicine.dto.js';
 
@@ -11,23 +10,18 @@ type CabinetMedicineInput = {
   cabinet?: CreateCabinetMedicineDto;
 };
 
-/** 在调用方事务内校验分类并入箱，提醒或就诊保存失败时一并回滚。 */
+/** 在调用方事务内保存大类文本并入箱，提醒或就诊保存失败时一并回滚。 */
 export async function createCabinetMedicine(
   tx: Prisma.TransactionClient,
   userId: string,
   medicine: CabinetMedicineInput,
 ): Promise<string> {
   const cabinet = medicine.cabinet!;
-  const category = await tx.medicine_categories.findUnique({
-    where: { id: cabinet.categoryId },
-    select: { id: true },
-  });
-  if (!category) throw new BadRequestException('药品分类不存在');
   const created = await tx.medicine_items.create({
     data: {
       ...(cabinet.id ? { id: cabinet.id } : {}),
       user_id: userId,
-      category_id: cabinet.categoryId,
+      category: cabinet.category,
       name: medicine.name,
       quantity: cabinet.quantity,
       unit: medicine.unit,

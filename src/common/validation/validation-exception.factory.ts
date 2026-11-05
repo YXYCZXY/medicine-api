@@ -3,7 +3,7 @@ import type { ValidationError } from 'class-validator';
 
 const FIELD_LABELS: Record<string, string> = {
   name: '药品名称',
-  categoryId: '药品分类',
+  category: '药品分类',
   quantity: '库存数量',
   unit: '单位',
   expirationDate: '有效期',

@@ -24,6 +24,19 @@ model users {
   visits         visit_records[]
   reminders      health_reminders[]
   blood_pressure_records blood_pressure_records[]
+  dictionary     user_dictionaries?
+}
+
+/// 每个用户一条字典记录，保存药品大类、功效、症状等标签。
+model user_dictionaries {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String   @unique @db.Uuid
+  categories String[] @default([])
+  efficacies String[] @default([])
+  symptoms   String[] @default([])
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  user       users    @relation(fields: [user_id], references: [id], onDelete: Restrict)
 }
 
 model user_sessions {
@@ -38,23 +51,13 @@ model user_sessions {
   @@index([user_id, expires_at])
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model medicine_categories {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name           String           @unique @db.VarChar(50)
-  sort_order     Int              @default(0)
-  created_at     DateTime         @default(now()) @db.Timestamptz(6)
-  updated_at     DateTime         @default(now()) @db.Timestamptz(6)
-  medicine_items medicine_items[]
-}
-
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model medicine_items {
   id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   user_id                   String                      @db.Uuid
   user                      users                       @relation(fields: [user_id], references: [id], onDelete: Restrict)
-  category_id               String                      @db.Uuid
+  category                  String                      @db.VarChar(50)
   name                      String                      @db.VarChar(100)
   specification             String?                     @db.VarChar(100)
   dosage_form               String?                     @db.VarChar(50)
@@ -72,7 +75,6 @@ model medicine_items {
   created_at                DateTime                    @default(now()) @db.Timestamptz(6)
   updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
   version                   Int                         @default(1)
-  medicine_categories       medicine_categories         @relation(fields: [category_id], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "fk_medicine_items_category")
   visit_medicines           visit_medicines[]
   health_reminder_medicines health_reminder_medicines[]
   medicine_expiry_states    medicine_expiry_states[]
@@ -81,7 +83,7 @@ model medicine_items {
   @@index([name], map: "idx_medicine_items_name")
   @@index([user_id], map: "idx_medicine_items_user_id")
   @@index([user_id, name], map: "idx_medicine_items_user_name")
-  @@index([user_id, category_id], map: "idx_medicine_items_user_category")
+  @@index([user_id, category], map: "idx_medicine_items_user_category")
 }
 
 /// Immutable result of a client operation. The business effect and accepted receipt commit together.

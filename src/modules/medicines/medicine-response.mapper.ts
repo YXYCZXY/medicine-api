@@ -18,26 +18,11 @@ export const MEDICINE_SELECT = {
   note: true,
   created_at: true,
   updated_at: true,
-  medicine_categories: {
-    select: {
-      id: true,
-      name: true,
-    },
-  },
+  category: true,
 } as const satisfies Prisma.medicine_itemsSelect;
-
-export const CATEGORY_SELECT = {
-  id: true,
-  name: true,
-  sort_order: true,
-} as const satisfies Prisma.medicine_categoriesSelect;
 
 export type MedicineRecord = Prisma.medicine_itemsGetPayload<{
   select: typeof MEDICINE_SELECT;
-}>;
-
-export type CategoryRecord = Prisma.medicine_categoriesGetPayload<{
-  select: typeof CATEGORY_SELECT;
 }>;
 
 export type MedicineResponse = {
@@ -53,15 +38,9 @@ export type MedicineResponse = {
   medicationTimings: string[];
   locationId: string | null;
   note: string | null;
-  category: { id: string; name: string } | null;
+  category: string;
   createdAt: string;
   updatedAt: string;
-};
-
-export type CategoryResponse = {
-  id: string;
-  name: string;
-  sortOrder: number;
 };
 
 /**
@@ -85,21 +64,9 @@ export function toMedicineResponse(item: MedicineRecord): MedicineResponse {
     medicationTimings: item.medication_timings,
     locationId: item.location,
     note: item.note,
-    category: item.medicine_categories
-      ? {
-          id: item.medicine_categories.id,
-          name: item.medicine_categories.name,
-        }
-      : null,
+    category: item.category,
     createdAt: item.created_at.toISOString(),
     updatedAt: item.updated_at.toISOString(),
   };
 }
 
-export function toCategoryResponse(item: CategoryRecord): CategoryResponse {
-  return {
-    id: item.id,
-    name: item.name,
-    sortOrder: item.sort_order,
-  };
-}

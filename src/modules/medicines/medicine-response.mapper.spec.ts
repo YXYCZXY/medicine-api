@@ -1,7 +1,6 @@
 import { Prisma } from '../../generated/prisma/client.js';
 
 import {
-  toCategoryResponse,
   toMedicineResponse,
   type MedicineRecord,
 } from './medicine-response.mapper.js';
@@ -22,10 +21,7 @@ function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
     note: '饭后服用',
     created_at: new Date('2026-10-01T08:30:00.000Z'),
     updated_at: new Date('2026-10-02T09:45:00.000Z'),
-    medicine_categories: {
-      id: '22222222-2222-4222-8222-222222222222',
-      name: '止痛',
-    },
+    category: '止痛',
     ...overrides,
   };
 }
@@ -45,10 +41,7 @@ describe('toMedicineResponse', () => {
       medicationTimings: ['after-meal', 'bedtime'],
       locationId: 'living',
       note: '饭后服用',
-      category: {
-        id: '22222222-2222-4222-8222-222222222222',
-        name: '止痛',
-      },
+      category: '止痛',
       createdAt: '2026-10-01T08:30:00.000Z',
       updatedAt: '2026-10-02T09:45:00.000Z',
     });
@@ -76,7 +69,6 @@ describe('toMedicineResponse', () => {
     const record = {
       ...createRecord(),
       user_id: '33333333-3333-4333-8333-333333333333',
-      category_id: '22222222-2222-4222-8222-222222222222',
       specification: '0.3g × 24粒',
     };
 
@@ -84,23 +76,7 @@ describe('toMedicineResponse', () => {
 
     expect(response).not.toHaveProperty('user_id');
     expect(response).not.toHaveProperty('userId');
-    expect(response).not.toHaveProperty('category_id');
     expect(response).not.toHaveProperty('specification');
   });
 });
 
-describe('toCategoryResponse', () => {
-  it('sort_order 转为 sortOrder', () => {
-    expect(
-      toCategoryResponse({
-        id: '22222222-2222-4222-8222-222222222222',
-        name: '止痛',
-        sort_order: 2,
-      }),
-    ).toEqual({
-      id: '22222222-2222-4222-8222-222222222222',
-      name: '止痛',
-      sortOrder: 2,
-    });
-  });
-});

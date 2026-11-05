@@ -10,7 +10,6 @@ import { MedicinesService } from './medicines.service.js';
 
 const USER_ID = '00000000-0000-4000-8000-000000000001';
 const MEDICINE_ID = '11111111-1111-4111-8111-111111111111';
-const CATEGORY_ID = '22222222-2222-4222-8222-222222222222';
 
 function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
   return {
@@ -28,17 +27,13 @@ function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
     note: null,
     created_at: new Date('2026-10-01T00:00:00.000Z'),
     updated_at: new Date('2026-10-01T00:00:00.000Z'),
-    medicine_categories: { id: CATEGORY_ID, name: '止痛' },
+    category: '止痛',
     ...overrides,
   };
 }
 
 function createPrismaMock() {
   return {
-    medicine_categories: {
-      findMany: vi.fn(),
-      findUnique: vi.fn(),
-    },
     medicine_items: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -63,24 +58,6 @@ describe('MedicinesService', () => {
     );
   });
 
-  describe('findCategories', () => {
-    it('按 sort_order 排序并输出 sortOrder', async () => {
-      prisma.medicine_categories.findMany.mockResolvedValue([
-        { id: CATEGORY_ID, name: '止痛', sort_order: 2 },
-      ]);
-
-      await expect(service.findCategories()).resolves.toEqual([
-        { id: CATEGORY_ID, name: '止痛', sortOrder: 2 },
-      ]);
-
-      expect(prisma.medicine_categories.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orderBy: [{ sort_order: 'asc' }, { name: 'asc' }],
-        }),
-      );
-    });
-  });
-
   describe('findAll', () => {
     it('只查询当前用户的数据并映射为响应格式', async () => {
       prisma.medicine_items.findMany.mockResolvedValue([createRecord()]);
@@ -96,32 +73,14 @@ describe('MedicinesService', () => {
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         id: MEDICINE_ID,
-        category: { id: CATEGORY_ID, name: '止痛' },
+        category: '止痛',
       });
       expect(result[0]).not.toHaveProperty('user_id');
     });
   });
 
   describe('create', () => {
-    it('分类不存在时返回 400', async () => {
-      prisma.medicine_categories.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.create({
-          name: '布洛芬',
-          categoryId: CATEGORY_ID,
-          quantity: 1,
-          unit: '粒',
-        }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-
-      expect(prisma.medicine_items.create).not.toHaveBeenCalled();
-    });
-
     it('写入全部字段，非预设数值原样保存', async () => {
-      prisma.medicine_categories.findUnique.mockResolvedValue({
-        id: CATEGORY_ID,
-      });
       prisma.medicine_items.create.mockResolvedValue(
         createRecord({
           dose_per_time: new Prisma.Decimal('1.5'),
@@ -131,7 +90,7 @@ describe('MedicinesService', () => {
 
       const result = await service.create({
         name: '布洛芬',
-        categoryId: CATEGORY_ID,
+        category: '止痛',
         quantity: 12,
         unit: '支',
         expirationDate: '2027-03-01',
@@ -146,7 +105,7 @@ describe('MedicinesService', () => {
       expect(prisma.medicine_items.create).toHaveBeenCalledWith({
         data: {
           user_id: USER_ID,
-          category_id: CATEGORY_ID,
+          category: '止痛',
           name: '布洛芬',
           quantity: 12,
           unit: '支',
@@ -165,14 +124,11 @@ describe('MedicinesService', () => {
     });
 
     it('可选字段未传时写入默认值', async () => {
-      prisma.medicine_categories.findUnique.mockResolvedValue({
-        id: CATEGORY_ID,
-      });
       prisma.medicine_items.create.mockResolvedValue(createRecord());
 
       await service.create({
         name: '布洛芬',
-        categoryId: CATEGORY_ID,
+        category: '止痛',
         quantity: 0,
         unit: '粒',
       });
@@ -220,17 +176,6 @@ describe('MedicinesService', () => {
           where: { id: MEDICINE_ID, user_id: USER_ID },
         }),
       );
-      expect(prisma.medicine_items.update).not.toHaveBeenCalled();
-    });
-
-    it('分类不存在时返回 400', async () => {
-      prisma.medicine_items.findFirst.mockResolvedValue({ id: MEDICINE_ID });
-      prisma.medicine_categories.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.update(MEDICINE_ID, { categoryId: CATEGORY_ID }),
-      ).rejects.toBeInstanceOf(BadRequestException);
-
       expect(prisma.medicine_items.update).not.toHaveBeenCalled();
     });
 
