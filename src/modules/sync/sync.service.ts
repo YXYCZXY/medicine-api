@@ -28,6 +28,10 @@ import {
   toBloodPressureResponse,
   toReminderResponse,
 } from '../reminders/reminder-response.mapper.js';
+import {
+  toUserDictionaryResponse,
+  USER_DICTIONARY_SELECT,
+} from '../user-dictionaries/user-dictionary-response.mapper.js';
 import { formatDateOnly, todayInBusinessTz } from '../visits/visit-date.js';
 import type { SyncCommandDto } from './sync.dto.js';
 
@@ -134,6 +138,10 @@ export class SyncService {
       where: { user_id: userId, device_id: deviceId },
       orderBy: { sequence: 'asc' },
     });
+    const dictionary = await tx.user_dictionaries.findUnique({
+      where: { user_id: userId },
+      select: USER_DICTIONARY_SELECT,
+    });
     return {
       protocolVersion: 2,
       userId,
@@ -172,6 +180,7 @@ export class SyncService {
         handledAt: row.handled_at?.toISOString() ?? null,
         dismissedAt: row.dismissed_at?.toISOString() ?? null,
       })),
+      dictionary: dictionary ? toUserDictionaryResponse(dictionary) : null,
       results: receipts.map((row) => row.result as unknown as Result),
     };
   }

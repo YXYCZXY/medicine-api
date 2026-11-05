@@ -23,6 +23,7 @@ import {
   trimToNull,
   trimUniqueStrings,
 } from '../../medicines/dto/transforms.js';
+import { DictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
 import { isVisitDateNotAfterToday } from '../visit-date.js';
 
 import { VisitMedicineDto } from './visit-medicine.dto.js';
@@ -173,6 +174,14 @@ export class CreateVisitDto {
   @Validate(UniqueVisitMedicineIdsConstraint)
   @Validate(UniqueVisitMedicineMedicineIdsConstraint)
   medicines!: VisitMedicineDto[];
+
+  /** 本次保存产生的症状字典增删改，按顺序重放 */
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => DictionaryActionDto)
+  dictionaryActions?: DictionaryActionDto[];
 }
 
 // re-export for UpdateVisitDto reuse of constraints

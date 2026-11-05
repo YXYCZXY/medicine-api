@@ -65,6 +65,18 @@ function createPrismaMock() {
       findMany: vi.fn().mockResolvedValue([]),
       create: vi.fn(),
     },
+    user_dictionaries: {
+      findUnique: vi.fn().mockResolvedValue({
+        categories: ['退烧止痛'],
+        efficacies: ['退烧'],
+        symptoms: ['发热咳嗽'],
+      }),
+      update: vi.fn().mockResolvedValue({
+        categories: ['退烧止痛'],
+        efficacies: ['退烧'],
+        symptoms: ['发热咳嗽'],
+      }),
+    },
   };
 
   return {
@@ -301,6 +313,89 @@ describe('VisitsService', () => {
         ),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    it('同次创建可入箱新药并重放症状字典行为', async () => {
+      prisma.tx.visit_records.create.mockResolvedValue({});
+      prisma.tx.medicine_items.create.mockResolvedValue({
+        id: '88888888-8888-4888-8888-888888888888',
+      });
+      prisma.tx.visit_medicines.createMany.mockResolvedValue({ count: 1 });
+      prisma.tx.visit_records.findFirst.mockResolvedValue(
+        createDetailRecord({
+          symptom_tags: ['喉咙痛'],
+        }),
+      );
+      prisma.tx.user_dictionaries.findUnique
+        .mockResolvedValueOnce({
+          categories: ['退烧止痛'],
+          efficacies: ['退烧'],
+          symptoms: ['发热咳嗽'],
+        })
+        .mockResolvedValueOnce({
+          categories: ['退烧止痛', '感冒咳嗽'],
+          efficacies: ['退烧', '止咳'],
+          symptoms: ['发热咳嗽'],
+        });
+
+      await service.create(
+        Object.assign(new CreateVisitDto(), baseDto, {
+          symptomTags: ['喉咙痛'],
+          dictionaryActions: [
+            { field: 'symptoms', op: 'add', value: '喉咙痛' },
+          ],
+          medicines: [
+            {
+              id: LINE_ID,
+              medicineId: null,
+              name: '新开的药',
+              unit: '支',
+              dosePerTime: 1,
+              timesPerDay: 3,
+              medicationTimings: [],
+              cabinet: {
+                category: '感冒咳嗽',
+                quantity: 12,
+                expirationDate: '2027-08-01',
+                efficacyTags: ['止咳'],
+                dictionaryActions: [
+                  { field: 'categories', op: 'add', value: '感冒咳嗽' },
+                  { field: 'efficacies', op: 'add', value: '止咳' },
+                ],
+              },
+            },
+          ],
+        }),
+      );
+
+      expect(prisma.tx.user_dictionaries.update).toHaveBeenCalledTimes(2);
+      expect(prisma.tx.user_dictionaries.update).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          data: {
+            categories: ['退烧止痛', '感冒咳嗽'],
+            efficacies: ['退烧', '止咳'],
+            symptoms: ['发热咳嗽'],
+          },
+        }),
+      );
+      expect(prisma.tx.user_dictionaries.update).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          data: {
+            categories: ['退烧止痛', '感冒咳嗽'],
+            efficacies: ['退烧', '止咳'],
+            symptoms: ['发热咳嗽', '喉咙痛'],
+          },
+        }),
+      );
+      expect(prisma.tx.visit_records.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            symptom_tags: ['喉咙痛'],
+          }),
+        }),
+      );
+    });
   });
 
   describe('update', () => {
@@ -310,6 +405,33 @@ describe('VisitsService', () => {
       ).rejects.toMatchObject({
         response: expect.objectContaining({ message: '没有需要修改的内容' }),
       });
+    });
+
+    it('仅症状字典行为也算有效修改', async () => {
+      prisma.tx.visit_records.findFirst
+        .mockResolvedValueOnce({
+          id: VISIT_ID,
+          version: 1,
+          visit_date: new Date('2026-10-15T00:00:00.000Z'),
+          initial_visit_id: null,
+        })
+        .mockResolvedValueOnce(createDetailRecord({ version: 2 }));
+      prisma.tx.visit_records.updateMany.mockResolvedValue({ count: 1 });
+
+      await service.update(VISIT_ID, {
+        expectedVersion: 1,
+        dictionaryActions: [
+          { field: 'symptoms', op: 'add', value: '喉咙痛' },
+        ],
+      } as UpdateVisitDto);
+
+      expect(prisma.tx.user_dictionaries.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            symptoms: ['发热咳嗽', '喉咙痛'],
+          }),
+        }),
+      );
     });
 
     it('版本冲突返回 409', async () => {

@@ -9,6 +9,8 @@ import { UserContextService } from '../auth/user-context.service.js';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { createCabinetMedicine } from '../medicines/create-cabinet-medicine.js';
+import { applyDictionaryActionsInTx } from '../user-dictionaries/dictionary-actions.js';
+import { normalizeDictionaryActions } from '../user-dictionaries/dto/dictionary-action.dto.js';
 
 import { CreateVisitDto } from './dto/create-visit.dto.js';
 import { QueryVisitsDto } from './dto/query-visits.dto.js';
@@ -617,6 +619,11 @@ export class VisitsService {
         }
 
         await this.writeMedicines(tx, dto.id, userId, dto.medicines, 'create');
+        await applyDictionaryActionsInTx(
+          tx,
+          userId,
+          normalizeDictionaryActions(dto.dictionaryActions),
+        );
 
         return this.loadDetail(tx, userId, dto.id);
       });
@@ -639,13 +646,16 @@ export class VisitsService {
       medicines,
       initialVisitId: requestedInitial,
       visitDate: requestedDate,
+      dictionaryActions,
       ...rest
     } = dto;
+    const actions = normalizeDictionaryActions(dictionaryActions);
 
     const hasBusinessField =
       medicines !== undefined ||
       requestedInitial !== undefined ||
       requestedDate !== undefined ||
+      Boolean(actions?.length) ||
       rest.hospitalName !== undefined ||
       rest.department !== undefined ||
       rest.doctorName !== undefined ||
@@ -791,6 +801,7 @@ export class VisitsService {
         if (medicines !== undefined) {
           await this.writeMedicines(tx, id, userId, medicines, 'replace');
         }
+        await applyDictionaryActionsInTx(tx, userId, actions);
 
         return this.loadDetail(tx, userId, id);
       });

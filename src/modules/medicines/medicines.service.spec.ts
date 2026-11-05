@@ -33,7 +33,7 @@ function createRecord(overrides: Partial<MedicineRecord> = {}): MedicineRecord {
 }
 
 function createPrismaMock() {
-  return {
+  const prisma = {
     medicine_items: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
@@ -41,7 +41,24 @@ function createPrismaMock() {
       update: vi.fn(),
       deleteMany: vi.fn(),
     },
+    user_dictionaries: {
+      findUnique: vi.fn().mockResolvedValue({
+        categories: ['止痛'],
+        efficacies: ['止痛'],
+        symptoms: ['发热咳嗽'],
+      }),
+      update: vi.fn().mockResolvedValue({
+        categories: ['止痛'],
+        efficacies: ['止痛'],
+        symptoms: ['发热咳嗽'],
+      }),
+    },
+    $transaction: vi.fn(),
   };
+  prisma.$transaction.mockImplementation(
+    async (callback: (tx: typeof prisma) => unknown) => callback(prisma),
+  );
+  return prisma;
 }
 
 describe('MedicinesService', () => {

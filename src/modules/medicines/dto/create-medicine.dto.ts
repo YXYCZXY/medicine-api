@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsString,
   IsNotEmpty,
@@ -13,8 +13,11 @@ import {
   Min,
   Max,
   MaxLength,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
+import { DictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
 import { trimString, trimUniqueStrings } from './transforms.js';
 
 export class CreateMedicineDto {
@@ -99,4 +102,12 @@ export class CreateMedicineDto {
   @IsString()
   @MaxLength(500)
   note?: string | null;
+
+  // 本次保存产生的字典增删改，按顺序重放
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => DictionaryActionDto)
+  dictionaryActions?: DictionaryActionDto[];
 }

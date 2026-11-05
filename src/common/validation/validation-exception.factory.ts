@@ -55,6 +55,13 @@ const FIELD_LABELS: Record<string, string> = {
   status: '处理状态',
   fromDate: '开始日期',
   toDate: '结束日期',
+  field: '字典字段',
+  values: '标签列表',
+  from: '原标签',
+  to: '新标签',
+  categories: '药品大类',
+  efficacies: '核心功效',
+  symptoms: '症状',
 };
 
 type MessageBuilder = (label: string, error: ValidationError) => string;

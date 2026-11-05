@@ -1,4 +1,6 @@
 import type { Prisma } from '../../generated/prisma/client.js';
+import { applyDictionaryActionsInTx } from '../user-dictionaries/dictionary-actions.js';
+import { normalizeDictionaryActions } from '../user-dictionaries/dto/dictionary-action.dto.js';
 import type { CreateCabinetMedicineDto } from './dto/create-cabinet-medicine.dto.js';
 
 type CabinetMedicineInput = {
@@ -37,5 +39,10 @@ export async function createCabinetMedicine(
     },
     select: { id: true },
   });
+  await applyDictionaryActionsInTx(
+    tx,
+    userId,
+    normalizeDictionaryActions(cabinet.dictionaryActions),
+  );
   return created.id;
 }

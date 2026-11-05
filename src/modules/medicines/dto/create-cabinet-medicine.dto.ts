@@ -1,4 +1,4 @@
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
@@ -12,8 +12,11 @@ import {
   Matches,
   MaxLength,
   Min,
+  ValidateIf,
+  ValidateNested,
 } from 'class-validator';
 
+import { DictionaryActionDto } from '../../user-dictionaries/dto/dictionary-action.dto.js';
 import { trimString, trimToNull, trimUniqueStrings } from './transforms.js';
 
 /**
@@ -61,4 +64,11 @@ export class CreateCabinetMedicineDto {
   @IsString()
   @MaxLength(500)
   note?: string | null;
+
+  @ValidateIf((_, value) => value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => DictionaryActionDto)
+  dictionaryActions?: DictionaryActionDto[];
 }
