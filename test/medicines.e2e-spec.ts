@@ -29,6 +29,7 @@ function createPrismaFake() {
       : new Prisma.Decimal(value as number);
 
   const fake = {
+    users: { findUnique: vi.fn().mockResolvedValue({ status: 'active' }) },
     $queryRaw: vi.fn().mockResolvedValue([]),
     rows,
     medicine_items: {

@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up medicine PostgreSQL database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/medicine-api/backup.sh
+UMask=0077
+Nice=10

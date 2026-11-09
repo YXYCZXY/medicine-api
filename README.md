@@ -44,15 +44,23 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
-## 用户注册与登录
+## 用户系统：Supabase 手机号认证
 
-运行 `yarn prisma:generate` 和 `yarn prisma:migrate` 后启动 API。用户通过 `POST /auth/register` 提交 `account`、`password`、`nickname` 自助注册并自动登录；账号为 3–64 位字母、数字、下划线或连字符，密码为 8–128 位。`POST /auth/login` 登录，`GET /users/me` 查询当前用户，`POST /auth/logout` 撤销当前会话。令牌有效期为 7 天，只将令牌摘要保存在数据库。除注册和登录外，接口均要求 `Authorization: Bearer <token>`。
+App 直接使用 Supabase Auth 完成手机号密码注册、短信确认、密码登录及当前设备退出。NestJS 不保存密码或签发登录令牌；原 /auth/register、/auth/login、/auth/logout 已移除。
 
-药箱、就诊、提醒和血压记录通过 `user_id` 归属用户，服务端从已验证的会话中取得用户 ID。不同账号的数据不会共享。当前没有手机号验证码、密码找回或家庭共享功能。
+后端配置 SUPABASE_URL、SUPABASE_PUBLISHABLE_KEY 和原有 DATABASE_URL。自动从固定项目 JWKS 获取 ES256 公钥，验证签名、issuer、audience、有效期、UUID、角色、session_id、非匿名身份及 password 或 otp AMR。缺少这两种方式的会话返回 AUTH_METHOD_UNSUPPORTED；单独 token_refresh、recovery 或 OAuth 不授予业务访问。首次初始化仍核对 Auth 端已确认手机号，已有账号继续校验手机号一致性和 active 状态；公钥/身份查询暂不可用返回 503。短信登录复用现有 SMS Hook，无数据库迁移。应先更新后端再上线客户端。无需手动提供 JWT 公钥或 Supabase 私密密钥。
 
-### 迁移旧单账号
+所有业务请求先幂等初始化用户和默认字典：首次通过 Auth getUser 确认手机号，事务内使用同一用户锁创建 users 与 user_dictionaries。已有昵称、自定义标签和空数组不会被登录覆盖。业务 users.id 等于 Supabase UUID；继续使用现有用户上下文隔离药箱、就诊、提醒、血压、附件及同步数据。
 
-迁移前备份数据库并核对业务表中的不同 `user_id`。迁移会为每个原有 ID 创建不可登录的占位用户，保留全部业务记录及原 UUID。若原 `.env` 中仍有 `DEV_USER_ID`、`LOGIN_ACCOUNT`、`LOGIN_PASSWORD`，运行 `yarn user:activate-legacy` 一次，将指定的旧用户激活为原账号；脚本不会覆盖已激活用户的密码。旧密码必须满足新的 8–128 位规则。完成后可从 `.env` 删除这三个旧变量及不再使用的 `AUTH_TOKEN_SECRET`。原有令牌需要重新登录。
+GET /users/me 返回 { id, phone, nickname, avatarUrl, status }；PATCH /users/me 仅接受 nickname。字典与 protocolVersion 2 同步接口保持原有结构。
+
+### 结构迁移
+
+运行 npm run prisma:generate、npm run prisma:migrate，再构建并启动 API。迁移 20261106010000_supabase_phone_auth 要求 users 为空；旧数据清理必须另行执行，结构迁移不隐式删数据、不做手机号身份合并。旧账号密码激活脚本已移除。
+
+配置 Supabase Phone、短信确认及短信服务商；关闭未使用的 Email Provider，目标 Access Token 期限为 900 秒。本次真实项目联调观察到期限仍为 3600 秒，控制台配置尚需调整。认证系统支持多设备登录，退出当前设备不影响其他设备。JWT 已签发后可能有效到到期。
+
+完整客户端状态及离线边界见 [用户系统实施说明](../medicine-app/doc/Supabase%20Auth登录与会话管理方案.md)。
 
 ## Run tests
 
@@ -77,6 +85,8 @@ npm run test:e2e -- test/reminders.postgres.e2e-spec.ts
 该测试在随机 schema 中依次执行迁移，结束后清理该 schema，不使用业务 `DATABASE_URL`。
 
 ## Deployment
+
+本项目自有服务器的打包、发布、域名、备份与回滚见 [部署操作说明](deploy/README.md)。
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 

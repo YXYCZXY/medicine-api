@@ -8,18 +8,15 @@ datasource db {
 }
 
 model users {
-  id             String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  account        String          @unique @db.VarChar(64)
-  password_hash  String
+  id             String          @id @db.Uuid
   nickname       String          @db.VarChar(50)
-  phone          String?         @db.VarChar(20)
+  phone          String          @unique @db.VarChar(20)
   phone_verified_at DateTime?    @db.Timestamptz(6)
   avatar_url     String?
   status         String          @default("active") @db.VarChar(16)
   created_at     DateTime        @default(now()) @db.Timestamptz(6)
   updated_at     DateTime        @default(now()) @db.Timestamptz(6)
   last_login_at  DateTime?       @db.Timestamptz(6)
-  sessions       user_sessions[]
   medicines      medicine_items[]
   visits         visit_records[]
   reminders      health_reminders[]
@@ -39,16 +36,31 @@ model user_dictionaries {
   user       users    @relation(fields: [user_id], references: [id], onDelete: Restrict)
 }
 
-model user_sessions {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id    String    @db.Uuid
-  token_hash String    @unique @db.VarChar(64)
-  expires_at DateTime  @db.Timestamptz(6)
-  revoked_at DateTime? @db.Timestamptz(6)
-  created_at DateTime  @default(now()) @db.Timestamptz(6)
-  user       users     @relation(fields: [user_id], references: [id], onDelete: Restrict)
+/// Deleted with the account. Never stores OTPs or access tokens.
+model account_deletion_challenges {
+  user_id String @id @db.Uuid
+  next_send_at DateTime @db.Timestamptz(6)
+  expires_at DateTime @db.Timestamptz(6)
+  attempts Int @default(0)
+}
 
-  @@index([user_id, expires_at])
+/// Durable saga; the account id is erased when the task completes.
+model account_deletion_tasks {
+  id String @id @db.Uuid
+  user_id String @unique @db.Uuid
+  stage String @default("business") @db.VarChar(16)
+  attempts Int @default(0)
+  next_attempt_at DateTime @default(now()) @db.Timestamptz(6)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  @@index([next_attempt_at])
+}
+
+/// Anonymous capability receipt, with no account id or personal data.
+model account_deletion_receipts {
+  id String @id @db.Uuid
+  secret_hash String @db.VarChar(64)
+  status String @db.VarChar(16)
+  expires_at DateTime? @db.Timestamptz(6)
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

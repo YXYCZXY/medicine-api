@@ -52,9 +52,8 @@ describe.skipIf(!testUrl)('健康提醒 PostgreSQL 迁移、事务与并发', ()
     await client.users.createMany({
       data: [USER, OTHER_USER].map((id, index) => ({
         id,
-        account: `stock-test-${index}`,
+        phone: `+86138${String(index).padStart(8, '0')}`,
         nickname: '库存测试',
-        password_hash: 'test-only',
       })),
     });
     service = new RemindersService(

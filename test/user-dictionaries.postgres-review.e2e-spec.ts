@@ -1,3 +1,5 @@
+import { createAuthFixture } from './supabase-fixture.js';
+import { SUPABASE_JWKS, SupabaseIdentityService } from '../src/modules/auth/supabase-auth.js';
 import { todayInBusinessTz } from '../src/modules/visits/visit-date.js';
 import { randomUUID } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
@@ -31,7 +33,7 @@ describe.skipIf(!url)('字典审核：真实 PostgreSQL、真实鉴权和事务'
   let app: NestFastifyApplication;
   let token: string;
   let userId: string;
-  const password = 'dictionary-review-only';
+  let testAuth: Awaited<ReturnType<typeof createAuthFixture>>;
 
   beforeAll(async () => {
     const parsed = new URL(url!);
@@ -63,9 +65,12 @@ describe.skipIf(!url)('字典审核：真实 PostgreSQL、真实鉴权和事务'
       ),
     ).toBe(0);
     client = new PrismaClient({ adapter: new PrismaPg(pool, { schema }) });
+    testAuth = await createAuthFixture();
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(PrismaService)
       .useValue(client)
+      .overrideProvider(SUPABASE_JWKS).useValue(testAuth.jwks)
+      .overrideProvider(SupabaseIdentityService).useValue(testAuth.identities)
       .compile();
     app = module.createNestApplication<NestFastifyApplication>(
       new FastifyAdapter(),
@@ -74,13 +79,8 @@ describe.skipIf(!url)('字典审核：真实 PostgreSQL、真实鉴权和事务'
     await app.getHttpAdapter().getInstance().ready();
   });
   beforeEach(async () => {
-    const account = `review-${randomUUID()}`;
-    const registered = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: { account, password, nickname: '审核账号' },
-    });
-    expect(registered.statusCode).toBe(201);
+    const registered = await testAuth.register(app);
+    expect(registered.statusCode).toBe(200);
     token = registered.json().token;
     userId = registered.json().user.id;
   });
@@ -98,6 +98,25 @@ describe.skipIf(!url)('字典审核：真实 PostgreSQL、真实鉴权和事务'
   const auth = () => ({ authorization: `Bearer ${token}` });
   const dictionary = () =>
     app.inject({ method: 'GET', url: '/user-dictionaries', headers: auth() });
+
+  it('并发首次业务请求原子创建唯一用户和字典', async () => {
+    const id = randomUUID(); const jwt = await testAuth.issue(id);
+    const results = await Promise.all(Array.from({ length: 8 }, () => app.inject({ method: 'GET', url: '/users/me', headers: { authorization: `Bearer ${jwt}` } })));
+    expect(results.map(result => result.statusCode)).toEqual(Array(8).fill(200));
+    expect(await client.users.count({ where: { id } })).toBe(1);
+    expect(await client.user_dictionaries.count({ where: { user_id: id } })).toBe(1);
+  });
+
+  it('真实字典插入失败会回滚业务用户，恢复后可重试', async () => {
+    const id = randomUUID(); const jwt = await testAuth.issue(id);
+    await pool.query(`ALTER TABLE user_dictionaries ADD CONSTRAINT bootstrap_failure_probe CHECK (user_id <> '${id}'::uuid) NOT VALID`);
+    try {
+      expect((await app.inject({ method: 'GET', url: '/users/me', headers: { authorization: `Bearer ${jwt}` } })).statusCode).toBeGreaterThanOrEqual(400);
+      expect(await client.users.count({ where: { id } })).toBe(0);
+    } finally { await pool.query('ALTER TABLE user_dictionaries DROP CONSTRAINT bootstrap_failure_probe'); }
+    expect((await app.inject({ method: 'GET', url: '/users/me', headers: { authorization: `Bearer ${jwt}` } })).statusCode).toBe(200);
+    expect(await client.user_dictionaries.count({ where: { user_id: id } })).toBe(1);
+  });
 
   it('全新库初始化得到当前字典和文本大类结构', async () => {
     const columns = await pool.query(
@@ -121,15 +140,7 @@ describe.skipIf(!url)('字典审核：真实 PostgreSQL、真实鉴权和事务'
       (await app.inject({ method: 'GET', url: '/user-dictionaries' }))
         .statusCode,
     ).toBe(401);
-    const second = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        account: `other-${randomUUID()}`,
-        password,
-        nickname: '另一账号',
-      },
-    });
+    const second = await testAuth.register(app);
     const response = await app.inject({
       method: 'POST',
       url: '/user-dictionaries/categories',
@@ -419,15 +430,7 @@ describe.skipIf(!url)('字典审核：真实 PostgreSQL、真实鉴权和事务'
   );
 
   it('一个用户持锁不会阻塞另一个用户字典写入', async () => {
-    const other = await app.inject({
-      method: 'POST',
-      url: '/auth/register',
-      payload: {
-        account: `other-${randomUUID()}`,
-        password,
-        nickname: '其他账号',
-      },
-    });
+    const other = await testAuth.register(app);
     const blocker = await pool.connect();
     try {
       await blocker.query('BEGIN');

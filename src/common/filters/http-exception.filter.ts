@@ -30,6 +30,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       }
     }
 
-    void reply.status(statusCode).send({ statusCode, message });
+    const code = typeof body === 'object' && body !== null && 'code' in body && typeof body.code === 'string' ? body.code : undefined;
+    void reply.status(statusCode).send({ statusCode, message, ...(code ? { code } : {}) });
   }
 }

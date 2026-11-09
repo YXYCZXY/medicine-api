@@ -1,21 +1,18 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
-import { createHash, randomBytes } from 'node:crypto';
+import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
-import { Prisma } from '../../generated/prisma/client.js';
 import { DEFAULT_USER_DICTIONARY } from './default-user-dictionary.js';
-import { hashPassword, verifyPassword } from './password.js';
 import { UserContextService } from './user-context.service.js';
+import { SupabaseIdentityService, SupabaseJwtVerifier, type VerifiedIdentity } from './supabase-auth.js';
+import { lockUserWrites } from '../user-dictionaries/dictionary-actions.js';
+import { Prisma } from '../../generated/prisma/client.js';
+import { lockActiveAccount } from './account-write-lock.js';
 
-const SESSION_AGE_SECONDS = 7 * 24 * 60 * 60;
-
-function tokenHash(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
+type Profile = { id: string; nickname: string; phone: string; avatar_url: string | null; status: string };
+function publicUser(user: Profile) {
+  return { id: user.id, nickname: user.nickname, phone: user.phone, avatarUrl: user.avatar_url, status: user.status };
 }
-
-type PublicUser = { id: string; account: string; nickname: string; phone: string | null; avatar_url: string | null };
-
-function publicUser(user: PublicUser) {
-  return { id: user.id, account: user.account, nickname: user.nickname, phone: user.phone, avatarUrl: user.avatar_url };
+function assertActive(user: Profile) {
+  if (user.status !== 'active') throw new ForbiddenException({ code: user.status === 'deleting' ? 'ACCOUNT_DELETING' : 'ACCOUNT_DISABLED', message: user.status === 'deleting' ? '账号正在删除中' : '账号已停用' });
 }
 
 @Injectable()
@@ -23,78 +20,71 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly context: UserContextService,
+    private readonly verifier: SupabaseJwtVerifier,
+    private readonly identities: SupabaseIdentityService,
   ) {}
 
-  private async createSession(user: PublicUser, client: Prisma.TransactionClient | PrismaService = this.prisma) {
-    const token = randomBytes(32).toString('base64url');
-    await client.user_sessions.create({ data: {
-      user_id: user.id,
-      token_hash: tokenHash(token),
-      expires_at: new Date(Date.now() + SESSION_AGE_SECONDS * 1000),
-    } });
-    return { token, expiresIn: SESSION_AGE_SECONDS, user: publicUser(user) };
+  async authenticate(token: string) {
+    const identity = await this.verifier.verify(token);
+    await this.ensureBusinessUser(identity, token);
+    return identity;
   }
 
-  async register(accountInput: string, password: string, nicknameInput: string) {
-    const account = accountInput.trim().toLowerCase();
-    const nickname = nicknameInput.trim();
-    if (!nickname) throw new ConflictException('请填写昵称');
-    const passwordHash = await hashPassword(password);
+  async ensureBusinessUser(identity: VerifiedIdentity, token: string) {
+    // Existing access JWTs remain cryptographically valid after Auth deletion.
+    // Check the remote identity on every authenticated request, without caching it.
+    await this.identities.getVerifiedUser(token, identity);
+    const existing = await this.prisma.users.findUnique({
+      where: { id: identity.userId }, include: { dictionary: { select: { id: true } } },
+    });
+    if (existing) {
+      assertActive(existing);
+      if (existing.phone !== identity.phone) throw new ForbiddenException({ code: 'PHONE_MISMATCH', message: '账号手机号发生变化，请重新登录' });
+      if (existing.dictionary) return;
+    }
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const user = await tx.users.create({ data: {
-          account,
-          password_hash: passwordHash,
-          nickname,
-        } });
-        await tx.user_dictionaries.create({
-          data: {
-            user_id: user.id,
+      await this.prisma.$transaction(async (tx) => {
+        await lockUserWrites(tx, identity.userId);
+        let user = await tx.users.findUnique({ where: { id: identity.userId } });
+        if (!user) {
+          // Recheck AFTER the same lock used by deletion. A late bootstrap must
+          // never recreate an identity that disappeared while it waited.
+          const verified = await this.identities.getVerifiedUser(token, identity);
+          user = await tx.users.create({ data: {
+            id: identity.userId, phone: verified.phone, phone_verified_at: verified.confirmedAt,
+            nickname: verified.nickname,
+          } });
+        }
+        assertActive(user);
+        if (user.phone !== identity.phone) throw new ForbiddenException({ code: 'PHONE_MISMATCH', message: '账号手机号不一致' });
+        await tx.user_dictionaries.upsert({
+          where: { user_id: user.id }, update: {},
+          create: { user_id: user.id,
             categories: [...DEFAULT_USER_DICTIONARY.categories],
             efficacies: [...DEFAULT_USER_DICTIONARY.efficacies],
             symptoms: [...DEFAULT_USER_DICTIONARY.symptoms],
           },
         });
-        return this.createSession(user, tx);
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-        throw new ConflictException('账号已被注册');
+        throw new ConflictException({ code: 'PHONE_ALREADY_BOUND', message: '该手机号已绑定其他身份，请联系客服' });
       }
       throw error;
     }
   }
 
-  async login(accountInput: string, password: string) {
-    const account = accountInput.trim().toLowerCase();
-    const user = await this.prisma.users.findUnique({ where: { account } });
-    if (!user || user.status !== 'active' || !(await verifyPassword(password, user.password_hash))) {
-      throw new UnauthorizedException('账号或密码错误');
-    }
-    await this.prisma.users.update({ where: { id: user.id }, data: { last_login_at: new Date() } });
-    return this.createSession(user);
-  }
-
-  async authenticate(token: string): Promise<{ userId: string; sessionId: string } | null> {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
-    const session = await this.prisma.user_sessions.findUnique({
-      where: { token_hash: tokenHash(token) },
-      include: { user: true },
-    });
-    if (!session || session.revoked_at || session.expires_at <= new Date() || session.user.status !== 'active') return null;
-    return { userId: session.user_id, sessionId: session.id };
-  }
-
-  async logout(): Promise<void> {
-    await this.prisma.user_sessions.updateMany({
-      where: { id: this.context.getSessionId(), revoked_at: null },
-      data: { revoked_at: new Date() },
-    });
-  }
-
   async me() {
-    const user = await this.prisma.users.findUnique({ where: { id: this.context.getUserId() } });
-    if (!user || user.status !== 'active') throw new UnauthorizedException('请先登录');
+    const user = await this.prisma.users.findUniqueOrThrow({ where: { id: this.context.getUserId() } });
+    assertActive(user);
     return publicUser(user);
+  }
+
+  async updateNickname(nickname: string) {
+    const userId = this.context.getUserId();
+    return this.prisma.$transaction(async tx => {
+      await lockActiveAccount(tx, userId);
+      return publicUser(await tx.users.update({ where: { id: userId }, data: { nickname } }));
+    });
   }
 }

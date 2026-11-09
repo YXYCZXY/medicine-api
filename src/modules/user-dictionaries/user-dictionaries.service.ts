@@ -1,3 +1,4 @@
+import { lockActiveAccount } from '../auth/account-write-lock.js';
 import {
   BadRequestException,
   ConflictException,
@@ -9,7 +10,6 @@ import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { UserContextService } from '../auth/user-context.service.js';
 import {
   applyDictionaryActions,
-  lockUserWrites,
   type DictionaryAction,
 } from './dictionary-actions.js';
 import type { DictionaryField } from './dto/dictionary-field.js';
@@ -47,7 +47,7 @@ export class UserDictionariesService {
   ): Promise<UserDictionaryResponse> {
     const userId = this.context.getUserId();
     return this.prisma.$transaction(async (tx) => {
-      await lockUserWrites(tx, userId);
+      await lockActiveAccount(tx, userId);
       const item = await this.findForUser(tx);
       const updated = await tx.user_dictionaries.update({
         where: { user_id: userId },

@@ -84,9 +84,8 @@ describe.skipIf(!url)('离线同步 PostgreSQL 原子性、幂等与恢复', () 
     await client.users.createMany({
       data: [USER, OTHER].map((id, i) => ({
         id,
-        account: `sync-${i}`,
+        phone: `+86139${String(i).padStart(8, '0')}`,
         nickname: '测试',
-        password_hash: 'test-only',
       })),
     });
     service = new SyncService(

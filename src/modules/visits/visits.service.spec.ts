@@ -44,6 +44,7 @@ function createDetailRecord(overrides: Record<string, unknown> = {}) {
 
 function createPrismaMock() {
   const tx = {
+    users: { findUnique: vi.fn().mockResolvedValue({ status: 'active' }) },
     $queryRaw: vi.fn().mockResolvedValue([]),
     visit_records: {
       create: vi.fn(),

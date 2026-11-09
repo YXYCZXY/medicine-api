@@ -12,6 +12,9 @@ export default defineConfig({
     // PrismaService 在用例中被内存实现替换，这里只需满足启动时的环境变量校验
     env: {
       DATABASE_URL: 'postgresql://e2e:e2e@localhost:5432/e2e',
+      SUPABASE_URL: 'https://auth.example.test',
+      SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test_only',
+      SUPABASE_SERVICE_ROLE_KEY: '',
     },
   },
 });

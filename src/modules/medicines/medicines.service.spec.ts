@@ -56,6 +56,7 @@ function createPrismaMock() {
         symptoms: ['发热咳嗽'],
       }),
     },
+    users: { findUnique: vi.fn().mockResolvedValue({ status: 'active' }) },
     $queryRaw: vi.fn().mockResolvedValue([]),
     $transaction: vi.fn(),
   };

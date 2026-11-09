@@ -1,3 +1,4 @@
+import { lockActiveAccount } from '../auth/account-write-lock.js';
 import {
   BadRequestException,
   ConflictException,
@@ -581,6 +582,7 @@ export class VisitsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         await lockDictionaryForWrite(tx, userId, dto);
         try {
           await tx.visit_records.create({
@@ -673,6 +675,7 @@ export class VisitsService {
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         await lockDictionaryForWrite(tx, userId, dto);
         const needsSelfLock =
           requestedDate !== undefined ||
@@ -826,6 +829,7 @@ export class VisitsService {
 
     try {
       await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         await this.lockRows(tx, 'visit_records', [id], 'FOR UPDATE');
 
         const current = await tx.visit_records.findFirst({

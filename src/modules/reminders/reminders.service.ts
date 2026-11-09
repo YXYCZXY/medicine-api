@@ -1,3 +1,4 @@
+import { lockActiveAccount } from '../auth/account-write-lock.js';
 import { lockDictionaryForWrite } from '../user-dictionaries/dictionary-actions.js';
 import {
   BadRequestException,
@@ -325,6 +326,7 @@ export class RemindersService {
       throw new BadRequestException('请选择提醒药品');
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         await lockDictionaryForWrite(tx, userId, dto);
         await tx.health_reminders.create({
           data: {
@@ -360,6 +362,7 @@ export class RemindersService {
       throw new BadRequestException('没有需要修改的内容');
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         await lockDictionaryForWrite(tx, userId, dto);
         await this.lockReminder(tx, userId, id);
         const current = await this.loadReminder(tx, userId, id);
@@ -432,6 +435,7 @@ export class RemindersService {
     const userId = this.getUserId();
     try {
       await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         await this.lockReminder(tx, userId, id);
         const current = await this.loadReminder(tx, userId, id);
         if (current.version !== expectedVersion)
@@ -455,6 +459,7 @@ export class RemindersService {
     const today = todayInBusinessTz();
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         await this.lockReminder(tx, userId, id);
         const reminder = await this.loadReminder(tx, userId, id);
         if (reminder.version !== dto.expectedReminderVersion)
@@ -636,6 +641,7 @@ export class RemindersService {
     const today = todayInBusinessTz();
     try {
       return await this.prisma.$transaction(async (tx) => {
+        await lockActiveAccount(tx, userId);
         const locked = await tx.$queryRaw<
           { id: string }[]
         >`SELECT id FROM medicine_items WHERE id = ${id}::uuid AND user_id = ${userId}::uuid FOR UPDATE`;

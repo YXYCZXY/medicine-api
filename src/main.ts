@@ -10,9 +10,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ bodyLimit: 12 * 1024 * 1024 }),
+    { rawBody: true },
   );
 
   const configService = app.get(ConfigService);
+  app.enableShutdownHooks();
 
   const corsOrigins = configService
     .get<string>('CORS_ORIGINS', '')
@@ -27,8 +29,8 @@ async function bootstrap() {
 
   const port = Number(configService.get<string>('PORT', '3000'));
 
-  // Fastify 默认只监听 127.0.0.1，实体设备和模拟器需要通过局域网 IP 访问
-  await app.listen(port, '0.0.0.0');
+  // Local development permits LAN access; deployment binds to loopback only.
+  await app.listen(port, configService.get<string>('HOST', '0.0.0.0'));
 }
 
 await bootstrap();

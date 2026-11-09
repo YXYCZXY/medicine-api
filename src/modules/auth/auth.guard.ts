@@ -18,7 +18,7 @@ export class AuthGuard implements CanActivate {
     const match = /^Bearer (\S+)$/i.exec(header ?? '');
     const identity = match ? await this.auth.authenticate(match[1]) : null;
     if (!identity) {
-      throw new UnauthorizedException('请先登录');
+      throw new UnauthorizedException({ code: 'TOKEN_REQUIRED', message: '请先登录' });
     }
     this.context.set(identity.userId, identity.sessionId);
     return true;

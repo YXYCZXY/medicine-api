@@ -39,6 +39,7 @@ function createRow(): ReminderRecord {
 
 function createMock() {
   const tx = {
+    users: { findUnique: vi.fn().mockResolvedValue({ status: 'active' }) },
     $queryRaw: vi.fn().mockResolvedValue([{ id: ID }]),
     health_reminders: {
       findFirst: vi.fn().mockResolvedValue(createRow()),

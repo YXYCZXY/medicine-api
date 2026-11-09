@@ -62,6 +62,7 @@ function createPrismaFake() {
   });
 
   const tx = {
+    users: { findUnique: vi.fn().mockResolvedValue({ status: 'active' }) },
     $queryRaw: vi.fn(async () => []),
     visit_records: {
       create: vi.fn(async ({ data }: { data: VisitRow }) => {

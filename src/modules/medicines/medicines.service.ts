@@ -1,3 +1,4 @@
+import { lockActiveAccount } from '../auth/account-write-lock.js';
 import {
   BadRequestException,
   Injectable,
@@ -78,7 +79,8 @@ export class MedicinesService {
     const actions = actionsFromDto(dto);
 
     const medicine = await this.prisma.$transaction(async (tx) => {
-      await lockDictionaryForWrite(tx, userId, dto);
+      await lockActiveAccount(tx, userId);
+        await lockDictionaryForWrite(tx, userId, dto);
       const created = await tx.medicine_items.create({
         data: {
           ...(id ? { id } : {}),
@@ -124,7 +126,8 @@ export class MedicinesService {
     }
 
     const medicine = await this.prisma.$transaction(async (tx) => {
-      await lockDictionaryForWrite(tx, userId, dto);
+      await lockActiveAccount(tx, userId);
+        await lockDictionaryForWrite(tx, userId, dto);
       const existing = await tx.medicine_items.findFirst({
         where: {
           id,
@@ -195,11 +198,9 @@ export class MedicinesService {
   async remove(id: string): Promise<void> {
     const userId = this.getUserId();
 
-    const result = await this.prisma.medicine_items.deleteMany({
-      where: {
-        id,
-        user_id: userId,
-      },
+    const result = await this.prisma.$transaction(async tx => {
+      await lockActiveAccount(tx, userId);
+      return tx.medicine_items.deleteMany({ where: { id, user_id: userId } });
     });
 
     if (result.count === 0) {

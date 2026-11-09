@@ -1,0 +1,16 @@
+**
+!package.json
+!yarn.lock
+!tsconfig.json
+!tsconfig.build.json
+!nest-cli.json
+!prisma7.config.ts
+!prisma/
+!prisma/**
+!src/
+!src/**
+src/generated
+**/*.spec.ts
+**/.env*
+**/*.pem
+**/*.key

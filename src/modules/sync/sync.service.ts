@@ -1,4 +1,4 @@
-import { lockUserWrites } from '../user-dictionaries/dictionary-actions.js';
+import { lockActiveAccount } from '../auth/account-write-lock.js';
 import { createHash } from 'node:crypto';
 import {
   BadRequestException,
@@ -199,7 +199,7 @@ export class SyncService {
     await this.prisma.$transaction(
       async (tx) => {
         // Serializes retries from overlapping app sessions before reading receipts.
-        await lockUserWrites(tx, userId);
+        await lockActiveAccount(tx, userId);
         for (const command of commands) {
           if (command.user_id !== userId)
             throw new BadRequestException('操作账号不匹配');
@@ -683,10 +683,11 @@ export class SyncService {
       .update(content.toString('base64'))
       .digest('hex');
     const key = { user_id: this.context.getUserId(), id };
-    const old = await this.prisma.sync_attachments.upsert({
-      where: { user_id_id: key },
-      create: { ...key, digest, content },
-      update: {},
+    const old = await this.prisma.$transaction(async tx => {
+      await lockActiveAccount(tx, key.user_id);
+      return tx.sync_attachments.upsert({
+        where: { user_id_id: key }, create: { ...key, digest, content }, update: {},
+      });
     });
     if (old.digest !== digest)
       throw new ConflictException('照片 ID 已对应其他内容，原照片已保留');

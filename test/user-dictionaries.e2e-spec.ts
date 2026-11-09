@@ -29,6 +29,7 @@ function createPrismaFake() {
   const rows = new Map<string, DictionaryRow>();
 
   const fake = {
+    users: { findUnique: vi.fn().mockResolvedValue({ status: 'active' }) },
     $queryRaw: vi.fn().mockResolvedValue([]),
     rows,
     seed(userId = USER_ID, overrides: Partial<DictionaryRow> = {}) {

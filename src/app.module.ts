@@ -13,8 +13,11 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { UserContextMiddleware } from './modules/auth/user-context.service.js';
 import { SyncModule } from './modules/sync/sync.module.js';
 import { UserDictionariesModule } from './modules/user-dictionaries/user-dictionaries.module.js';
+import { HealthController } from './health.controller.js';
+import { SmsHookModule } from './modules/sms-hook/sms-hook.module.js';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
@@ -24,6 +27,7 @@ import { UserDictionariesModule } from './modules/user-dictionaries/user-diction
     PrismaModule,
 
     AuthModule,
+    SmsHookModule,
 
     MedicinesModule,
     VisitsModule,

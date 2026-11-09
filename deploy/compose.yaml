@@ -1,0 +1,51 @@
+name: medicine-api
+services:
+  api:
+    image: medicine-api:${RELEASE:?Set RELEASE in release.env}
+    container_name: medicine-api
+    network_mode: host
+    env_file:
+      - path: ./api.env
+        format: raw
+    environment:
+      NODE_ENV: production
+      HOST: 127.0.0.1
+      PORT: "3100"
+      NODE_OPTIONS: --max-old-space-size=128
+    restart: unless-stopped
+    stop_grace_period: 30s
+    mem_limit: 256m
+    cpus: 0.5
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3100/health',{signal:AbortSignal.timeout(5000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 6s
+      start_period: 30s
+      retries: 3
+  migrate:
+    image: medicine-api-migrate:${RELEASE:?Set RELEASE in release.env}
+    profiles: [tools]
+    network_mode: host
+    env_file:
+      - path: ./api.env
+        format: raw
+    environment:
+      NODE_OPTIONS: --max-old-space-size=128
+    mem_limit: 256m
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
