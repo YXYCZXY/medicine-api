@@ -151,3 +151,18 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## 本地开发：选择数据库
+
+服务器部署继续使用服务器上的 `api.env`，以下命令仅用于本机开发。复制 `.env.example` 为 `.env` 并配置 Supabase 等公共设置；数据库配置分别复制 `.env.database-local.example` 和 `.env.database-server.example` 为对应的 `.local` 文件，填入各自的数据库账号和密码（URL 中的特殊字符需百分号编码）。这些文件不要提交。
+
+- 本地数据库：运行 `yarn start:dev:local-db`，默认配置指向本机 5432。需要时用项目根目录的 `compose.yaml` 启动本地 PostgreSQL。
+- 服务器数据库：先在独立终端建立隧道并保持运行：
+
+  ```sh
+  ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:15432:127.0.0.1:5432 -i ~/.ssh/id_ed25519_vultr root@139.180.212.148
+  ```
+
+  SSH 用户、密钥及端口如有变化，请按实际配置调整。另开终端运行 `yarn start:dev:server-db`。服务器配置文件中的账号密码使用服务器数据库凭据；隧道地址保持 `127.0.0.1:15432`。本地端口被占用时，调整隧道和配置文件中的端口。关闭隧道可按 Ctrl-C。
+
+启动脚本先加载指定数据库配置，再由 Nest 加载 `.env` 中其余变量；已有 shell 环境变量优先于配置文件，因此请先 `unset DATABASE_URL`，避免意外覆盖所选数据库。直接运行 `yarn start:dev` 仍使用 `.env`。Prisma 命令不自动使用上述配置文件：迁移和测试前务必确认目标，生产数据不要用于写入测试。隧道断开时连接会失败；请检查 SSH 登录、端口占用及隧道状态后重试。服务器数据库是实际业务数据，本地 API 的写操作会直接影响线上数据。

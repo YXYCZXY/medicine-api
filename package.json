@@ -26,7 +26,9 @@
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "prisma:generate": "prisma generate --config prisma7.config.ts",
-    "prisma:migrate": "prisma migrate deploy --config prisma7.config.ts"
+    "prisma:migrate": "prisma migrate deploy --config prisma7.config.ts",
+    "start:dev:local-db": "node --env-file=.env.database-local.local ./node_modules/@nestjs/cli/bin/nest.js start --watch",
+    "start:dev:server-db": "node --env-file=.env.database-server.local ./node_modules/@nestjs/cli/bin/nest.js start --watch"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
