@@ -1,5 +1,8 @@
-
 import { Module } from '@nestjs/common';
+
+import {
+  UserDictionariesModule,
+} from '../user-dictionaries/user-dictionaries.module.js';
 
 import {
   LLM_CLIENT,
@@ -30,6 +33,30 @@ import {
 } from './p1/p1.service.js';
 
 import {
+  P2EntryGuardService,
+} from './p2/p2-entry-guard.service.js';
+
+import {
+  P2DictionaryContextService,
+} from './p2/p2-dictionary-context.service.js';
+
+import {
+  P2DictionaryMatcherService,
+} from './p2/p2-dictionary-matcher.service.js';
+
+import {
+  P2IntentModelClientService,
+} from './p2/p2-intent-model-client.service.js';
+
+import {
+  P2IntentValidatorService,
+} from './p2/p2-intent-validator.service.js';
+
+import {
+  P2OrchestratorService,
+} from './p2/p2-orchestrator.service.js';
+
+import {
   AiResponseBuilderService,
 } from './ai-response-builder.service.js';
 
@@ -40,7 +67,7 @@ import {
 /**
  * 千方记 AI Agent Module
  *
- * 当前实现 P1：
+ * 当前实现 P1，并注册 P2 内部服务：
  *
  * - 领域识别
  * - 医疗风险初步评估
@@ -50,10 +77,11 @@ import {
  * - HTTP 响应构建
  * - HTTP Controller
  *
- * 暂未实现 P2 / P3 / P4。
+ * P2 仅注册依赖，尚未接入 HTTP 调用链。
+ * 暂未接入 P3 / P4。
  */
 @Module({
-  imports: [],
+  imports: [UserDictionariesModule],
 
   controllers: [
     // AI HTTP 入口
@@ -87,7 +115,23 @@ import {
     P1Service,
 
     // ========================================================
-    // 3. HTTP 响应构建
+    // 3. P2 核心处理组件（尚未接入 HTTP）
+    // ========================================================
+
+    P2EntryGuardService,
+
+    P2DictionaryContextService,
+
+    P2DictionaryMatcherService,
+
+    P2IntentModelClientService,
+
+    P2IntentValidatorService,
+
+    P2OrchestratorService,
+
+    // ========================================================
+    // 4. HTTP 响应构建
     // ========================================================
 
     AiResponseBuilderService,
@@ -102,6 +146,9 @@ import {
 
     // 供后续 Agent 阶段复用
     LLM_CLIENT,
+
+    // P2 主流程入口
+    P2OrchestratorService,
   ],
 })
 export class AiModule {}
